@@ -92,6 +92,8 @@ public final class FridaAction extends JNodeAction {
 		MethodInfo methodInfo = mth.getMethodInfo();
 		String methodName;
 		String newMethodName;
+
+		// 处理构造方法
 		if (methodInfo.isConstructor()) {
 			methodName = "$init";
 			newMethodName = methodName;
@@ -99,6 +101,8 @@ public final class FridaAction extends JNodeAction {
 			methodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getName());
 			newMethodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getAlias());
 		}
+
+		// 处理重载方法: overload
 		String overload;
 		if (isOverloaded(mth)) {
 			String overloadArgs = methodInfo.getArgumentsTypes().stream()
@@ -114,29 +118,36 @@ public final class FridaAction extends JNodeAction {
 		if (argNames.isEmpty()) {
 			logArgs = "";
 		} else {
-			logArgs = ": " + argNames.stream().map(arg -> arg + "=${" + arg + "}").collect(Collectors.joining(", "));
+			logArgs = ": " + argNames.stream().map(arg -> arg + "= ${" + arg + "}").collect(Collectors.joining(", "));
 		}
-		String shortClassName = mth.getParentClass().getAlias();
+
+		// 改成完整类名, 防止变量重复的可能
+		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
+		// String shortClassName = mth.getParentClass().getAlias(); // 这个别名只有尾部的类名, 因为经常冲突于是换完整的
 		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
 			// no return value
-			return shortClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-					+ "    console.log(`" + shortClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
+			return fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
+					+ "    console.log(`[->] " + fullClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
 					+ "    this[\"" + methodName + "\"](" + args + ");\n"
+					+ "    // showJavaStacks();\n"
+					+ "    console.log(`[<-] " + fullClassName + "." + newMethodName + " return! no ret!`);\n"
 					+ "};";
 		}
-		return shortClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-				+ "    console.log(`" + shortClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
-				+ "    let result = this[\"" + methodName + "\"](" + args + ");\n"
-				+ "    console.log(`" + shortClassName + "." + newMethodName + " result=${result}`);\n"
-				+ "    return result;\n"
+		return fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
+				+ "    console.log(`[->] " + fullClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
+				+ "    let ret = this[\"" + methodName + "\"](" + args + ");\n"
+				+ "    console.log(`[<-] " + fullClassName + "." + newMethodName + " ret=${ret}`);\n"
+				+ "    // showJavaStacks();\n"
+				+ "    return ret;\n"
 				+ "};";
 	}
 
 	private String generateClassSnippet(JClass jc) {
 		JavaClass javaClass = jc.getCls();
 		String rawClassName = StringEscapeUtils.escapeEcmaScript(javaClass.getRawName());
-		String shortClassName = javaClass.getName();
-		return String.format("var %s = Java.use(\"%s\");", shortClassName, rawClassName);
+		// String shortClassName = javaClass.getName();
+		String fullClassName = javaClass.getFullName().replace(".", "_");
+		return String.format("var %s = Java.use(\"%s\");", fullClassName, rawClassName);
 	}
 
 	private void showMethodSelectionDialog(JClass jc) {
