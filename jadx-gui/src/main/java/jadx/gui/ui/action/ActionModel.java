@@ -93,6 +93,8 @@ public enum ActionModel {
 			Shortcut.keyboard(KeyEvent.VK_N)),
 	FRIDA_COPY(CODE_AREA, "popup.frida", "popup.frida", null,
 			Shortcut.keyboard(KeyEvent.VK_F)),
+	FRIDA_RPC_COPY(CODE_AREA, "popup.frida_rpc", "popup.frida_rpc", null,
+			Shortcut.keyboard(KeyEvent.VK_H)),
 	XPOSED_COPY(CODE_AREA, "popup.xposed", "popup.xposed", null,
 			Shortcut.keyboard(KeyEvent.VK_Y)),
 	JSON_PRETTIFY(CODE_AREA, "popup.json_prettify", "popup.json_prettify", null,

@@ -30,20 +30,19 @@ import jadx.gui.ui.dialog.MethodsDialog;
 import jadx.gui.utils.NLS;
 import jadx.gui.utils.UiUtils;
 
-public final class FridaAction extends JNodeAction {
-	private static final Logger LOG = LoggerFactory.getLogger(FridaAction.class);
-	private static final long serialVersionUID = -3084073927621269039L;
+public final class FridaRPCAction extends JNodeAction {
+	private static final Logger LOG = LoggerFactory.getLogger(FridaRPCAction.class);
 
-	public FridaAction(CodeArea codeArea) {
-		super(ActionModel.FRIDA_COPY, codeArea);
+	public FridaRPCAction(CodeArea codeArea) {
+		super(ActionModel.FRIDA_RPC_COPY, codeArea);
 	}
 
 	@Override
 	public void runAction(JNode node) {
 		try {
-			generateFridaSnippet(node);
+			generateFridaRPCSnippet(node);
 		} catch (Exception e) {
-			LOG.error("Failed to generate Frida code snippet", e);
+			LOG.error("Failed to generate Frida RPC code", e);
 			JOptionPane.showMessageDialog(getCodeArea().getMainWindow(), e.getLocalizedMessage(), NLS.str("error_dialog.title"),
 					JOptionPane.ERROR_MESSAGE);
 		}
@@ -54,26 +53,22 @@ public final class FridaAction extends JNodeAction {
 		return node instanceof JMethod || node instanceof JClass || node instanceof JField;
 	}
 
-	private void generateFridaSnippet(JNode node) {
-		String fridaSnippet;
+	private void generateFridaRPCSnippet(JNode node) {
+		String fridaRPCSnippet;
+		// 目前只支持某个方法
 		if (node instanceof JMethod) {
-			fridaSnippet = generateMethodSnippet((JMethod) node);
-			copySnipped(fridaSnippet);
-		} else if (node instanceof JField) {
-			fridaSnippet = generateFieldSnippet((JField) node);
-			copySnipped(fridaSnippet);
-		} else if (node instanceof JClass) {
-			SwingUtilities.invokeLater(() -> showMethodSelectionDialog((JClass) node));
+			fridaRPCSnippet = generateMethodSnippet((JMethod) node);
+			copySnipped(fridaRPCSnippet);
 		} else {
 			throw new JadxRuntimeException("Unsupported node type: " + (node != null ? node.getClass() : "null"));
 		}
 
 	}
 
-	private void copySnipped(String fridaSnippet) {
-		if (!StringUtils.isEmpty(fridaSnippet)) {
-			LOG.info("Frida snippet:\n{}", fridaSnippet);
-			UiUtils.copyToClipboard(fridaSnippet);
+	private void copySnipped(String fridaRPCSnippet) {
+		if (!StringUtils.isEmpty(fridaRPCSnippet)) {
+			LOG.info("Frida RPC snippet:\n{}", fridaRPCSnippet);
+			UiUtils.copyToClipboard(fridaRPCSnippet);
 		}
 	}
 
@@ -121,40 +116,28 @@ public final class FridaAction extends JNodeAction {
 
 		// 改成完整类名, 防止变量重复的可能
 		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
+
 		// String shortClassName = mth.getParentClass().getAlias(); // 这个别名只有尾部的类名, 因为经常冲突于是换完整的
-		String javaStacks = "function showJavaStacks() {\n" +
-				"    const LogClass = Java.use(\"android.util.Log\");\n" +
-				"    console.log(LogClass.getStackTraceString(Java.use(\"java.lang.Exception\").$new()));\n" +
-				"}\n";
 		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
 			// no return value
-			return javaStacks + "function hook_" + methodName + "(){\n"
+			return "function hook_call_" + methodName + "(){\n"
 					+ "    Java.perform(function () {\n"
 					+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-					+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-					+ "        console.log(`[->] " + fullClassName + "." + newMethodName + " is called! \\nargs" + logArgs + "`);\n"
-					+ "        this[\"" + methodName + "\"](" + args + ");\n"
-					+ "        // showJavaStacks();\n"
-					+ "        console.log(`[<-] " + fullClassName + "." + newMethodName + " is ended! no retval!`);\n"
-					+ "        };\n"
+					+ "        " + fullClassName + "[\"" + methodName + "\"]"  + overload +  "(" + args + ");\n"
+					+ "        " + "console.warn(`[*] " + fullClassName + "." + methodName + " is called! no retval!`)\n"
 					+ "    });\n"
-					+ "};\n\n"
-					+ "hook_" + methodName + "();\n";
+					+ "};";
 		}
-		return javaStacks + "function hook_" + methodName + "(){\n"
+		return "function hook_call_" + methodName + "(){\n"
 				+ "    Java.perform(function () {\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-				+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-				+ "        console.log(`[->] " + fullClassName + "." + newMethodName + " is called! \\nargs" + logArgs + "`);\n"
-				+ "        var retval = this[\"" + methodName + "\"](" + args + ");\n"
-				+ "        // showJavaStacks();\n"
-				+ "        console.log(`[<-] " + fullClassName + "." + newMethodName + " is ended! retval= ${retval}`);\n"
-				+ "        };"
+				+ "        var retval = " + fullClassName + "[\"" + methodName + "\"]" + overload + "(" + args + ");\n"
+				+ "        " + "console.warn(`[*] " + fullClassName + "." + methodName + " is called! retval= ${retval}`)\n"
 				+ "    });\n"
-				+ "};\n"
-				+ "hook_" + methodName + "();\n";
-
+				+ "};";
 	}
+
+
 
 	private String generateClassSnippet(JClass jc) {
 		JavaClass javaClass = jc.getCls();

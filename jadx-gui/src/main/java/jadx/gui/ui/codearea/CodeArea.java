@@ -155,6 +155,7 @@ public final class CodeArea extends AbstractCodeArea {
 		popup.add(new RenameAction(this));
 		popup.addSeparator();
 		popup.add(new FridaAction(this));
+		popup.add(new FridaRPCAction(this));
 		popup.add(new XposedAction(this));
 		getMainWindow().getWrapper().getGuiPluginsContext().appendPopupMenus(this, popup);
 
