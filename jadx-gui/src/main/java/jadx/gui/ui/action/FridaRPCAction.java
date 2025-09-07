@@ -114,10 +114,26 @@ public final class FridaRPCAction extends JNodeAction {
 			logArgs = ": " + argNames.stream().map(arg -> arg + "= ${" + arg + "}").collect(Collectors.joining(", "));
 		}
 
+		// 处理参数类型，特别是字符串类型, 字节类型
+		List<ArgType> argTypes = methodInfo.getArgumentsTypes();
+		StringBuilder paramProcessing = new StringBuilder();
+		// TODO: 处理参数名
+		// 1. 如果是jdk的，加一句
+		// 1.
+		for (int i = 0; i < argNames.size(); i++) {
+			String argName = argNames.get(i);
+			ArgType argType = argTypes.get(i);
+
+			// 如果参数类型是字符串，添加特殊处理
+			if (argType.equals(ArgType.STRING) || (argType.isObject() && "java.lang.String".equals(argType.getObject()))) {
+				// 添加if语句检查参数是否为null
+				paramProcessing.append("        if (").append(argName).append(" == null) ").append(argName).append(" = \"\";\n");
+			}
+		}
+
+
 		// 改成完整类名, 防止变量重复的可能
 		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
-
-		// String shortClassName = mth.getParentClass().getAlias(); // 这个别名只有尾部的类名, 因为经常冲突于是换完整的
 		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
 			// no return value
 			return "function hook_call_" + methodName + "(){\n"
@@ -138,21 +154,12 @@ public final class FridaRPCAction extends JNodeAction {
 	}
 
 
-
 	private String generateClassSnippet(JClass jc) {
 		JavaClass javaClass = jc.getCls();
 		String rawClassName = StringEscapeUtils.escapeEcmaScript(javaClass.getRawName());
 		// String shortClassName = javaClass.getName();
 		String fullClassName = javaClass.getFullName().replace(".", "_");
 		return String.format("var %s = Java.use(\"%s\");", fullClassName, rawClassName);
-	}
-
-	private void showMethodSelectionDialog(JClass jc) {
-		JavaClass javaClass = jc.getCls();
-		new MethodsDialog(getCodeArea().getMainWindow(), javaClass.getMethods(), (result) -> {
-			String fridaSnippet = generateClassAllMethodSnippet(jc, result);
-			copySnipped(fridaSnippet);
-		});
 	}
 
 	private String generateClassAllMethodSnippet(JClass jc, List<JavaMethod> methodList) {
@@ -165,22 +172,6 @@ public final class FridaRPCAction extends JNodeAction {
 		return result.toString();
 	}
 
-	private String generateFieldSnippet(JField jf) {
-		JavaField javaField = jf.getJavaField();
-		String rawFieldName = StringEscapeUtils.escapeEcmaScript(javaField.getRawName());
-		String fieldName = javaField.getName();
-
-		List<MethodNode> methodNodes = javaField.getFieldNode().getParentClass().getMethods();
-		for (MethodNode methodNode : methodNodes) {
-			if (methodNode.getName().equals(rawFieldName)) {
-				rawFieldName = "_" + rawFieldName;
-				break;
-			}
-		}
-		JClass jc = jf.getRootClass();
-		String classSnippet = generateClassSnippet(jc);
-		return String.format("%s\n%s = %s.%s.value;", classSnippet, fieldName, jc.getName(), rawFieldName);
-	}
 
 	public Boolean isOverloaded(MethodNode methodNode) {
 		return methodNode.getParentClass().getMethods().stream()

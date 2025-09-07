@@ -148,7 +148,7 @@ public final class FridaAction extends JNodeAction {
 				+ "        console.log(`[->] " + fullClassName + "." + newMethodName + " is called! \\nargs" + logArgs + "`);\n"
 				+ "        var retval = this[\"" + methodName + "\"](" + args + ");\n"
 				+ "        // showJavaStacks();\n"
-				+ "        console.log(`[<-] " + fullClassName + "." + newMethodName + " is ended! retval= ${retval}`);\n"
+				+ "        console.log(`[<-] " + fullClassName + "." + newMethodName + " is ended! \\nretval= ${retval}`);\n"
 				+ "        };"
 				+ "    });\n"
 				+ "};\n"
