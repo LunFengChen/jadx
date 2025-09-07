@@ -116,23 +116,22 @@ public final class FridaAction extends JNodeAction {
 		if (argNames.isEmpty()) {
 			logArgs = "";
 		} else {
-			logArgs = ": " + argNames.stream().map(arg -> arg + "= ${" + arg + "}").collect(Collectors.joining(", "));
+			logArgs = ":\\n" + argNames.stream().map(arg -> arg + "= ${" + arg + "}").collect(Collectors.joining(", \\n"));
 		}
 
 		// 改成完整类名, 防止变量重复的可能
 		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
 		// String shortClassName = mth.getParentClass().getAlias(); // 这个别名只有尾部的类名, 因为经常冲突于是换完整的
 		String javaStacks = "function showJavaStacks() {\n" +
-				"    const LogClass = Java.use(\"android.util.Log\");\n" +
-				"    console.log(LogClass.getStackTraceString(Java.use(\"java.lang.Exception\").$new()));\n" +
-				"}\n";
+				"    console.log(Java.use(\"android.util.Log\").getStackTraceString(Java.use(\"java.lang.Exception\").$new()));\n" +
+				"}\n\n";
 		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
 			// no return value
-			return javaStacks + "function hook_" + methodName + "(){\n"
+			return javaStacks + "function hook_mointor_" + methodName + "(){\n"
 					+ "    Java.perform(function () {\n"
 					+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
 					+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-					+ "        console.log(`[->] " + fullClassName + "." + newMethodName + " is called! \\nargs" + logArgs + "`);\n"
+					+ "        console.log(`[->] " + fullClassName + "." + newMethodName + " is called! args" + logArgs + "`);\n"
 					+ "        this[\"" + methodName + "\"](" + args + ");\n"
 					+ "        // showJavaStacks();\n"
 					+ "        console.log(`[<-] " + fullClassName + "." + newMethodName + " is ended! no retval!`);\n"
@@ -141,15 +140,15 @@ public final class FridaAction extends JNodeAction {
 					+ "};\n\n"
 					+ "hook_" + methodName + "();\n";
 		}
-		return javaStacks + "function hook_" + methodName + "(){\n"
+		return javaStacks + "function hook_mointor_" + methodName + "(){\n"
 				+ "    Java.perform(function () {\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
 				+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-				+ "        console.log(`[->] " + fullClassName + "." + newMethodName + " is called! \\nargs" + logArgs + "`);\n"
+				+ "        console.log(`[->] " + fullClassName + "." + newMethodName + " is called! args" + logArgs + "`);\n"
 				+ "        var retval = this[\"" + methodName + "\"](" + args + ");\n"
 				+ "        // showJavaStacks();\n"
 				+ "        console.log(`[<-] " + fullClassName + "." + newMethodName + " is ended! \\nretval= ${retval}`);\n"
-				+ "        };"
+				+ "        };\n"
 				+ "    });\n"
 				+ "};\n"
 				+ "hook_" + methodName + "();\n";
