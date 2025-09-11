@@ -114,9 +114,9 @@ public final class FridaAction extends JNodeAction {
 		String args = String.join(", ", argNames);
 		String logArgs;
 		if (argNames.isEmpty()) {
-			logArgs = "";
+			logArgs = "no args!";
 		} else {
-			logArgs = ":\\n" + argNames.stream().map(arg -> arg + "= ${" + arg + "}").collect(Collectors.joining(", \\n"));
+			logArgs = "args is as follows:\\n" + argNames.stream().map(arg -> "\\t->" + arg + "= ${" + arg + "}").collect(Collectors.joining("\\n"));
 		}
 
 		// 改成完整类名, 防止变量重复的可能
@@ -131,27 +131,30 @@ public final class FridaAction extends JNodeAction {
 					+ "    Java.perform(function () {\n"
 					+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
 					+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-					+ "            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! args" + logArgs + "`);\n"
+					+ "            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! " + logArgs + "`);\n"
 					+ "            this[\"" + methodName + "\"](" + args + ");\n"
 					+ "            // showJavaStacks();\n"
 					+ "            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! no retval!`);\n"
 					+ "        };\n"
 					+ "    });\n"
+					+ "    console.warn(`[*] hook_mointor_" + methodName + " is injected!`);\n"
 					+ "};\n\n"
-					+ "hook_" + methodName + "();\n";
+					+ "hook_mointor_" + methodName + "();\n";
 		}
 		return javaStacks + "function hook_mointor_" + methodName + "(){\n"
 				+ "    Java.perform(function () {\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
 				+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-				+ "            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! args" + logArgs + "`);\n"
+				+ "            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! " + logArgs + "`);\n"
 				+ "            var retval = this[\"" + methodName + "\"](" + args + ");\n"
 				+ "            // showJavaStacks();\n"
 				+ "            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! \\nretval= ${retval}`);\n"
+				+ "            return retval;\n"
 				+ "        };\n"
 				+ "    });\n"
+				+ "    console.warn(`[*] hook_mointor_" + methodName + " is injected!`);\n"
 				+ "};\n"
-				+ "hook_" + methodName + "();\n";
+				+ "hook_mointor_" + methodName + "();\n";
 
 	}
 

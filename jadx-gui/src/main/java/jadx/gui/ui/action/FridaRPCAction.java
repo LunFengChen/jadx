@@ -136,21 +136,25 @@ public final class FridaRPCAction extends JNodeAction {
 		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
 		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
 			// no return value
-			return "function hook_call_" + methodName + "(){\n"
+			return "function call_" + methodName + "(){\n"
 					+ "    Java.perform(function () {\n"
 					+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
+					+ "        // 1) input your args or 2) modify \"call_" + methodName + "\" to receive args\n"
 					+ "        " + fullClassName + "[\"" + methodName + "\"]"  + overload +  "(" + args + ");\n"
 					+ "        " + "console.warn(`[*] " + fullClassName + "." + methodName + " is called! no retval!`)\n"
 					+ "    });\n"
-					+ "};";
+					+ "    console.warn(`[*] call_" + methodName + " is injected!`);\n"
+					+ "};\n";
 		}
-		return "function hook_call_" + methodName + "(){\n"
+		return "function call_" + methodName + "(){\n"
 				+ "    Java.perform(function () {\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
+				+ "        // 1) input your args or 2) modify \"call_" + methodName + "\" to receive args\n"
 				+ "        var retval = " + fullClassName + "[\"" + methodName + "\"]" + overload + "(" + args + ");\n"
-				+ "        " + "console.warn(`[*] " + fullClassName + "." + methodName + " is called! retval= ${retval}`)\n"
+				+ "        " + "console.warn(`[*] " + fullClassName + "." + methodName + " is called! \\nretval= ${retval}`);\n"
 				+ "    });\n"
-				+ "};";
+				+ "    console.warn(`[*] call_" + methodName + " is injected!`);\n"
+				+ "};\n";
 	}
 
 
