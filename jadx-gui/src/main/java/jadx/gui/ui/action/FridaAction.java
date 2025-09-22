@@ -88,73 +88,100 @@ public final class FridaAction extends JNodeAction {
 	private String getMethodSnippet(JavaMethod javaMethod, JClass jc) {
 		MethodNode mth = javaMethod.getMethodNode();
 		MethodInfo methodInfo = mth.getMethodInfo();
-		String methodName;
-		String newMethodName;
 
+		String methodName;
 		// 处理构造方法
 		if (methodInfo.isConstructor()) {
 			methodName = "$init";
-			newMethodName = methodName;
 		} else {
 			methodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getName());
-			newMethodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getAlias());
 		}
 
 		// 处理重载方法: overload
-		String overload;
-		if (isOverloaded(mth)) {
-			String overloadArgs = methodInfo.getArgumentsTypes().stream()
-					.map(this::parseArgType).collect(Collectors.joining(", "));
-			overload = ".overload(" + overloadArgs + ")";
-		} else {
-			overload = "";
-		}
+		String overload = isOverloaded(mth) ? ".overload(" +
+				methodInfo.getArgumentsTypes().stream()
+						.map(this::parseArgType).collect(Collectors.joining(", ")) + ")" : "";
+
 		List<String> argNames = mth.collectArgNodes().stream()
 				.map(VarNode::getName).collect(Collectors.toList());
 		String args = String.join(", ", argNames);
-		String logArgs;
-		if (argNames.isEmpty()) {
-			logArgs = "no args!";
-		} else {
-			logArgs = "args is as follows:\\n" + argNames.stream().map(arg -> "\\t->" + arg + "= ${" + arg + "}").collect(Collectors.joining("\\n"));
-		}
+		String logArgs = argNames.isEmpty() ? "no args!" :
+				"args is as follows:\\n" + argNames.stream()
+						.map(arg -> "    ->" + arg + "= ${" + arg + "}")
+						.collect(Collectors.joining("\\n"));
 
 		// 改成完整类名, 防止变量重复的可能
 		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
-		// String shortClassName = mth.getParentClass().getAlias(); // 这个别名只有尾部的类名, 因为经常冲突于是换完整的
-		String javaStacks = "function showJavaStacks() {\n" +
-				"    console.log(Java.use(\"android.util.Log\").getStackTraceString(Java.use(\"java.lang.Exception\").$new()));\n" +
-				"}\n\n";
-		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
-			// no return value
-			return javaStacks + "function hook_mointor_" + methodName + "(){\n"
-					+ "    Java.perform(function () {\n"
-					+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-					+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-					+ "            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! " + logArgs + "`);\n"
-					+ "            this[\"" + methodName + "\"](" + args + ");\n"
-					+ "            // showJavaStacks();\n"
-					+ "            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! no retval!`);\n"
-					+ "        };\n"
-					+ "    });\n"
-					+ "    console.warn(`[*] hook_mointor_" + methodName + " is injected!`);\n"
-					+ "};\n\n"
-					+ "hook_mointor_" + methodName + "();\n";
+
+		// 检查是否有Map类型的参数
+		List<ArgType> argTypes = methodInfo.getArgumentsTypes();
+		boolean hasMapParameter = argTypes.stream()
+				.anyMatch(argType -> argType.isObject() &&
+						(argType.getObject().contains("Map") ||
+								argType.getObject().contains("HashMap") ||
+								argType.getObject().contains("TreeMap")));
+
+		// 构建辅助函数
+		String helperFunctions = "    // 辅助函数1: 打印调用栈\n" +
+				"    function showJavaStacks() {\n" +
+				"        console.log(Java.use(\"android.util.Log\").getStackTraceString(Java.use(\"java.lang.Exception\").$new()));\n" +
+				"    }\n" +
+				(hasMapParameter ?
+						"    // 辅助函数2: 打印Map\n" +
+								"    function showMap(map) {\n" +
+								"        if (map == null) return;\n" +
+								"        console.log('Map content:');\n" +
+								"        var iterator = map.entrySet().iterator();\n" +
+								"        while (iterator.hasNext()) {\n" +
+								"            var entry = iterator.next();\n" +
+								"            console.log('  ' + entry.getKey() + ' = ' + entry.getValue());\n" +
+								"        }\n" +
+								"    }\n"
+						: "");
+
+		// 添加Map参数显示逻辑
+		StringBuilder mapLogging = new StringBuilder();
+		if (hasMapParameter) {
+			for (int i = 0; i < argNames.size(); i++) {
+				ArgType argType = argTypes.get(i);
+				String argName = argNames.get(i);
+				if (argType.isObject() &&
+						(argType.getObject().contains("Map") ||
+								argType.getObject().contains("HashMap") ||
+								argType.getObject().contains("TreeMap"))) {
+					mapLogging.append("            showMap(").append(argName).append(");\n");
+				}
+			}
 		}
-		return javaStacks + "function hook_mointor_" + methodName + "(){\n"
-				+ "    Java.perform(function () {\n"
-				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-				+ "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-				+ "            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! " + logArgs + "`);\n"
-				+ "            var retval = this[\"" + methodName + "\"](" + args + ");\n"
-				+ "            // showJavaStacks();\n"
-				+ "            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! \\nretval= ${retval}`);\n"
-				+ "            return retval;\n"
-				+ "        };\n"
-				+ "    });\n"
-				+ "    console.warn(`[*] hook_mointor_" + methodName + " is injected!`);\n"
-				+ "};\n"
-				+ "hook_mointor_" + methodName + "();\n";
+
+		// 使用三目运算符判断是否有返回值
+		boolean hasReturnValue = !(methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID);
+		String newMethodName = methodInfo.isConstructor() ? methodName : StringEscapeUtils.escapeEcmaScript(methodInfo.getAlias());
+
+		// 使用三目运算符构建函数实现体
+		String functionImplementation = "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n" +
+				"            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! " + logArgs + "`);\n" +
+				mapLogging.toString() +
+				(hasReturnValue ?
+						"            var retval = this[\"" + methodName + "\"](" + args + ");\n" +
+								"            // showJavaStacks();\n" +
+								"            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! \\n    retval= ${retval}`);\n" +
+								"            return retval;\n"
+						:
+						"            this[\"" + methodName + "\"](" + args + ");\n" +
+								"            // showJavaStacks();\n" +
+								"            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! no retval!`);\n") +
+				"        };\n";
+
+		return "function hook_mointor_" + methodName + "(){\n" +
+				"    Java.perform(function () {\n" +
+				"        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName()) +
+				functionImplementation +
+				"    });\n" +
+				helperFunctions +
+				"    console.warn(`[*] hook_mointor_" + methodName + " is injected!`);\n" +
+				"};\n" +
+				"hook_mointor_" + methodName + "();\n";
 
 	}
 

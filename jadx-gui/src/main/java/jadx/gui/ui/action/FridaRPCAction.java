@@ -1,5 +1,6 @@
 package jadx.gui.ui.action;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -84,77 +85,84 @@ public final class FridaRPCAction extends JNodeAction {
 		MethodNode mth = javaMethod.getMethodNode();
 		MethodInfo methodInfo = mth.getMethodInfo();
 		String methodName;
-		String newMethodName;
 
 		// 处理构造方法
 		if (methodInfo.isConstructor()) {
 			methodName = "$init";
-			newMethodName = methodName;
 		} else {
 			methodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getName());
-			newMethodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getAlias());
 		}
 
 		// 处理重载方法: overload
-		String overload;
+		String overload = "";
 		if (isOverloaded(mth)) {
 			String overloadArgs = methodInfo.getArgumentsTypes().stream()
 					.map(this::parseArgType).collect(Collectors.joining(", "));
 			overload = ".overload(" + overloadArgs + ")";
-		} else {
-			overload = "";
 		}
+
 		List<String> argNames = mth.collectArgNodes().stream()
 				.map(VarNode::getName).collect(Collectors.toList());
-		String args = String.join(", ", argNames);
-		String logArgs;
-		if (argNames.isEmpty()) {
-			logArgs = "";
-		} else {
-			logArgs = ": " + argNames.stream().map(arg -> arg + "= ${" + arg + "}").collect(Collectors.joining(", "));
-		}
 
-		// 处理参数类型，特别是字符串类型, 字节类型
-		List<ArgType> argTypes = methodInfo.getArgumentsTypes();
-		StringBuilder paramProcessing = new StringBuilder();
-		// TODO: 处理参数名
-		// 1. 如果是jdk的，加一句
-		// 1.
+		// 生成参数变量名列表 (arg1, arg2, ...)
+		List<String> argVars = new ArrayList<>();
 		for (int i = 0; i < argNames.size(); i++) {
-			String argName = argNames.get(i);
-			ArgType argType = argTypes.get(i);
-
-			// 如果参数类型是字符串，添加特殊处理
-			if (argType.equals(ArgType.STRING) || (argType.isObject() && "java.lang.String".equals(argType.getObject()))) {
-				// 添加if语句检查参数是否为null
-				paramProcessing.append("        if (").append(argName).append(" == null) ").append(argName).append(" = \"\";\n");
-			}
+			argVars.add("arg" + (i + 1) + "_" + argNames.get(i));
 		}
-
+		String args = String.join(", ", argVars);
 
 		// 改成完整类名, 防止变量重复的可能
 		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
-		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
-			// no return value
-			return "function call_" + methodName + "(){\n"
-					+ "    Java.perform(function () {\n"
-					+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-					+ "        // 1) input your args or 2) modify \"call_" + methodName + "\" to receive args\n"
-					+ "        " + fullClassName + "[\"" + methodName + "\"]"  + overload +  "(" + args + ");\n"
-					+ "        " + "console.warn(`[*] " + fullClassName + "." + methodName + " is called! no retval!`)\n"
-					+ "    });\n"
-					+ "    console.warn(`[*] call_" + methodName + " is injected!`);\n"
-					+ "};\n";
+
+		// 构建参数声明部分
+		StringBuilder paramDeclarations = new StringBuilder();
+		if (!argVars.isEmpty()) {
+			paramDeclarations.append("        // please check your args! you can hook this function to get example args\n");
+			for (String argVar : argVars) {
+				paramDeclarations.append("        var ").append(argVar).append(" = ?;\n");
+			}
+			paramDeclarations.append("\n");
 		}
-		return "function call_" + methodName + "(){\n"
+
+		// 使用三目运算符处理有无返回值的情况
+		boolean hasReturnValue = !(methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID);
+		String callStatement = hasReturnValue
+				? "var retval = " + fullClassName + "[\"" + methodName + "\"]" + overload + "(" + args + ");"
+				: fullClassName + "[\"" + methodName + "\"]" + overload + "(" + args + ");";
+
+		String logStatement = hasReturnValue
+				? "console.warn(`[*] " + fullClassName + "." + methodName + " is called! \\nretval= ${retval}`);"
+				: "console.warn(`[*] " + fullClassName + "." + methodName + " is called! no retval!`);";
+
+		// 构建主动调用函数体
+		String functionBody = "function call_" + methodName + "(){\n"
 				+ "    Java.perform(function () {\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-				+ "        // 1) input your args or 2) modify \"call_" + methodName + "\" to receive args\n"
-				+ "        var retval = " + fullClassName + "[\"" + methodName + "\"]" + overload + "(" + args + ");\n"
-				+ "        " + "console.warn(`[*] " + fullClassName + "." + methodName + " is called! \\nretval= ${retval}`);\n"
+				+ paramDeclarations.toString()
+				+ "        " + callStatement + "\n"
+				+ "        " + logStatement + "\n"
 				+ "    });\n"
 				+ "    console.warn(`[*] call_" + methodName + " is injected!`);\n"
 				+ "};\n";
+
+		// 构建RPC导出函数名
+		String rpcExportFunction = "call" + methodName.substring(0, 1).toUpperCase() + methodName.substring(1);
+		if (methodName.equals("$init")) {
+			rpcExportFunction = "callInit";
+		}
+
+		// 构建rpc.exports部分 - 使用完全相同的逻辑，只是包装在rpc.exports中
+		String rpcExports = "rpc.exports = {\n"
+				+ "    " + rpcExportFunction + ": function(" + String.join(", ", argNames) + ") {\n"
+				+ "        Java.perform(function () {\n"
+				+ "            " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
+				+ (argVars.isEmpty() ? "" : "            // In RPC mode, args are passed directly\n")
+				+ "            " + (hasReturnValue ? "return " : "") + fullClassName + "[\"" + methodName + "\"]" + overload + "(" + String.join(", ", argNames) + ");\n"
+				+ "        });\n"
+				+ "    }\n"
+				+ "};\n\n";
+
+		return rpcExports + functionBody;
 	}
 
 
