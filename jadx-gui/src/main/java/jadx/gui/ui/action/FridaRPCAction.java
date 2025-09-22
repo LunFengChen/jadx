@@ -153,11 +153,11 @@ public final class FridaRPCAction extends JNodeAction {
 
 		// 构建rpc.exports部分 - 使用完全相同的逻辑，只是包装在rpc.exports中
 		String rpcExports = "rpc.exports = {\n"
-				+ "    " + rpcExportFunction + ": function(" + String.join(", ", argNames) + ") {\n"
+				+ "    " + rpcExportFunction + ": function(?) {\n"
 				+ "        Java.perform(function () {\n"
 				+ "            " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-				+ (argVars.isEmpty() ? "" : "            // In RPC mode, args are passed directly\n")
-				+ "            " + (hasReturnValue ? "return " : "") + fullClassName + "[\"" + methodName + "\"]" + overload + "(" + String.join(", ", argNames) + ");\n"
+				+ (argVars.isEmpty() ? "" : "            // set your args\n")
+				+ "            " + (hasReturnValue ? "return " : "") + "call_" + methodName + "(?);\n"
 				+ "        });\n"
 				+ "    }\n"
 				+ "};\n\n";
