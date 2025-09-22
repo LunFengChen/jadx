@@ -167,6 +167,12 @@ public class JadxArgs implements Closeable {
 
 	private IntegerFormat integerFormat = IntegerFormat.AUTO;
 
+	/**
+	 * Maximum updates allowed total in method per one instruction.
+	 * Should be more or equal 1, default value is 10.
+	 */
+	private int typeUpdatesLimitCount = 10;
+
 	private boolean useDxInput = false;
 
 	public enum UseKotlinMethodsForVarNames {
@@ -738,6 +744,14 @@ public class JadxArgs implements Closeable {
 		this.integerFormat = format;
 	}
 
+	public int getTypeUpdatesLimitCount() {
+		return typeUpdatesLimitCount;
+	}
+
+	public void setTypeUpdatesLimitCount(int typeUpdatesLimitCount) {
+		this.typeUpdatesLimitCount = Math.max(1, typeUpdatesLimitCount);
+	}
+
 	public boolean isUseDxInput() {
 		return useDxInput;
 	}
@@ -839,7 +853,7 @@ public class JadxArgs implements Closeable {
 				+ insertDebugLines + extractFinally
 				+ debugInfo + escapeUnicode + replaceConsts + restoreSwitchOverString
 				+ respectBytecodeAccModifiers + fsCaseSensitive + renameFlags
-				+ commentsLevel + useDxInput + integerFormat
+				+ commentsLevel + useDxInput + integerFormat + typeUpdatesLimitCount
 				+ "|" + buildPluginsHash(decompiler);
 		return FileUtils.md5Sum(argStr);
 	}
@@ -898,6 +912,7 @@ public class JadxArgs implements Closeable {
 				+ ", cfgOutput=" + cfgOutput
 				+ ", rawCFGOutput=" + rawCFGOutput
 				+ ", useHeadersForDetectResourceExtensions=" + useHeadersForDetectResourceExtensions
+				+ ", typeUpdatesLimitCount=" + typeUpdatesLimitCount
 				+ '}';
 	}
 }

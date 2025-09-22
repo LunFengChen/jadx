@@ -255,6 +255,9 @@ public class JadxCLIArgs {
 	)
 	protected IntegerFormat integerFormat = IntegerFormat.AUTO;
 
+	@Parameter(names = { "--type-update-limit" }, description = "type update limit count (per one instruction)")
+	protected int typeUpdatesLimitCount = 10;
+
 	@Parameter(names = { "--fs-case-sensitive" }, description = "treat filesystem as case sensitive, false by default")
 	protected boolean fsCaseSensitive = false;
 
@@ -384,6 +387,7 @@ public class JadxCLIArgs {
 		args.setFsCaseSensitive(fsCaseSensitive);
 		args.setCommentsLevel(commentsLevel);
 		args.setIntegerFormat(integerFormat);
+		args.setTypeUpdatesLimitCount(typeUpdatesLimitCount);
 		args.setUseDxInput(useDx);
 		args.setPluginOptions(pluginOptions);
 		args.setDisabledPlugins(Arrays.stream(disablePlugins.split(",")).map(String::trim).collect(Collectors.toSet()));
@@ -547,6 +551,10 @@ public class JadxCLIArgs {
 
 	public IntegerFormat getIntegerFormat() {
 		return integerFormat;
+	}
+
+	public int getTypeUpdatesLimitCount() {
+		return typeUpdatesLimitCount;
 	}
 
 	public boolean isEscapeUnicode() {
