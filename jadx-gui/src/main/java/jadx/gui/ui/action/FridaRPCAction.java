@@ -138,6 +138,10 @@ public final class FridaRPCAction extends JNodeAction {
 		String functionBody = "function call_" + methodName + "(){\n"
 				+ "    Java.perform(function () {\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
+				+ (!mth.getAccessFlags().isStatic() && !methodInfo.isConstructor()
+						? "        // you should hava a instance to call func\n"
+						+ "        // e.g.: var instance = " + fullClassName + ".$new(); instance.func(...);\n"
+						: "")
 				+ paramDeclarations.toString()
 				+ "        " + callStatement + "\n"
 				+ "        " + logStatement + "\n"
@@ -155,7 +159,6 @@ public final class FridaRPCAction extends JNodeAction {
 		String rpcExports = "rpc.exports = {\n"
 				+ "    " + rpcExportFunction + ": function(?) {\n"
 				+ "        Java.perform(function () {\n"
-				+ "            " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
 				+ (argVars.isEmpty() ? "" : "            // set your args\n")
 				+ "            " + (hasReturnValue ? "return " : "") + "call_" + methodName + "(?);\n"
 				+ "        });\n"
