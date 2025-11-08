@@ -13,6 +13,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
@@ -45,6 +46,7 @@ import org.slf4j.LoggerFactory;
 import jadx.api.ICodeInfo;
 import jadx.core.utils.StringUtils;
 import jadx.core.utils.exceptions.JadxRuntimeException;
+import jadx.gui.jobs.IBackgroundTask;
 import jadx.gui.settings.JadxSettings;
 import jadx.gui.treemodel.JClass;
 import jadx.gui.treemodel.JEditableNode;
@@ -71,6 +73,8 @@ public abstract class AbstractCodeArea extends RSyntaxTextArea {
 		if (tokenMakerFactory instanceof AbstractTokenMakerFactory) {
 			AbstractTokenMakerFactory atmf = (AbstractTokenMakerFactory) tokenMakerFactory;
 			atmf.putMapping(SYNTAX_STYLE_SMALI, "jadx.gui.ui.codearea.SmaliTokenMaker");
+			// use simple token maker instead default PlainTextTokenMaker to avoid parse errors
+			atmf.putMapping(SYNTAX_STYLE_NONE, "jadx.gui.ui.codearea.SimpleTokenMaker");
 		} else {
 			throw new JadxRuntimeException("Unexpected TokenMakerFactory instance: " + tokenMakerFactory.getClass());
 		}
@@ -81,7 +85,7 @@ public abstract class AbstractCodeArea extends RSyntaxTextArea {
 	protected ContentPanel contentPanel;
 	protected JNode node;
 
-	protected volatile boolean loaded = false;
+	private final AtomicBoolean loaded = new AtomicBoolean(false);
 
 	public AbstractCodeArea(ContentPanel contentPanel, JNode node) {
 		this.contentPanel = contentPanel;
@@ -252,7 +256,7 @@ public abstract class AbstractCodeArea extends RSyntaxTextArea {
 
 	private void addChangeUpdates(JEditableNode editableNode) {
 		getDocument().addDocumentListener(new DocumentUpdateListener(ev -> {
-			if (loaded) {
+			if (loaded.get()) {
 				editableNode.setChanged(true);
 			}
 		}));
@@ -347,15 +351,31 @@ public abstract class AbstractCodeArea extends RSyntaxTextArea {
 
 	public abstract ICodeInfo getCodeInfo();
 
+	public void load() {
+		if (isLoaded()) {
+			return;
+		}
+		IBackgroundTask loadTask = getLoadTask();
+		contentPanel.getMainWindow().getBackgroundExecutor().execute(loadTask);
+	}
+
 	/**
 	 * Implement in this method the code that loads and sets the content to be displayed
 	 * Call `setLoaded()` on load finish.
 	 */
-	public abstract void load();
+	public abstract IBackgroundTask getLoadTask();
 
 	public void setLoaded() {
-		this.loaded = true;
+		this.loaded.set(true);
 		discardAllEdits(); // disable 'undo' action to empty state (before load)
+	}
+
+	public void setUnLoaded() {
+		this.loaded.set(false);
+	}
+
+	public boolean isLoaded() {
+		return loaded.get();
 	}
 
 	/**
