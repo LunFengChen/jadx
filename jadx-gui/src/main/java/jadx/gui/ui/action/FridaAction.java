@@ -95,7 +95,7 @@ public final class FridaAction extends JNodeAction {
 		if (methodSignature == null || methodSignature.isEmpty()) {
 			methodSignature = mth.toString();
 		}
-		
+
 		// 获取 Smali 格式的方法签名用于添加注释
 		String smaliSignature = methodInfo.makeSignature(true);
 
@@ -307,6 +307,13 @@ public final class FridaAction extends JNodeAction {
 						"            console.log('  [' + i + '] = ' + (item != null ? item.toString() : 'null'));\n" +
 						"        }\n" +
 						"    }\n";
+			case "objectToGson":
+				return "    // 辅助函数" + functionIndex + ": Object类型转gson\n" +
+						"    function objectToGson(object) {\n" +
+						"        Java.openClassFile('/data/local/tmp/r0gson.dex').load();\n" +
+						"        var JavaClass_Gson = Java.use('com.r0ysue.gson.Gson').$new();\n" +
+						"        return Gson.toJsonTree(object).getAsJsonObject();\n" +
+						"    }\n";
 			default:
 				return "";
 		}
@@ -334,26 +341,26 @@ public final class FridaAction extends JNodeAction {
 		String rawClassName = javaClass.getFullName();
 		String fullClassName = rawClassName.replace(".", "_");
 		String functionName = "hook_" + fullClassName;
-		
+
 		// 收集所有需要的辅助函数类型
 		boolean needsShowJavaStacks = true; // 总是包含
 		boolean needsShowJavaMap = false;
 		boolean needsBytesToString = false;
 		boolean needsShowStringArray = false;
-		
+
 		// 分析所有方法的参数类型
 		for (JavaMethod javaMethod : methodList) {
 			MethodNode mth = javaMethod.getMethodNode();
 			MethodInfo methodInfo = mth.getMethodInfo();
-			
+
 			// 获取方法签名用于检测参数类型
 			String methodSignature = javaMethod.toString();
 			if (methodSignature == null || methodSignature.isEmpty()) {
 				methodSignature = mth.toString();
 			}
-			
+
 			List<ArgType> argTypes = methodInfo.getArgumentsTypes();
-			
+
 			// 检查 Map 参数
 			if (!needsShowJavaMap) {
 				needsShowJavaMap = argTypes.stream()
@@ -362,18 +369,18 @@ public final class FridaAction extends JNodeAction {
 										argType.getObject().contains("HashMap") ||
 										argType.getObject().contains("TreeMap")));
 			}
-			
+
 			// 检查 byte[] 参数
 			if (!needsBytesToString && methodSignature != null) {
 				needsBytesToString = methodSignature.contains("byte[]");
 			}
-			
+
 			// 检查 String[] 参数
 			if (!needsShowStringArray && methodSignature != null) {
 				needsShowStringArray = methodSignature.contains("String[]");
 			}
 		}
-		
+
 		// 构建辅助函数
 		StringBuilder helperFunctions = new StringBuilder();
 		int helperIndex = 1;
@@ -387,42 +394,42 @@ public final class FridaAction extends JNodeAction {
 		if (needsShowStringArray) {
 			helperFunctions.append(getHelpfunction("showStringArray", helperIndex++));
 		}
-		
+
 		// 构建所有方法的 hook 函数
 		StringBuilder methodFunctions = new StringBuilder();
 		StringBuilder methodCalls = new StringBuilder();
-		
+
 		for (JavaMethod javaMethod : methodList) {
 			MethodNode mth = javaMethod.getMethodNode();
 			MethodInfo methodInfo = mth.getMethodInfo();
-			
+
 			// 跳过 <clinit> 静态初始化方法
 			if (methodInfo.isClassInit()) {
 				continue;
 			}
-			
+
 			String methodName;
 			if (methodInfo.isConstructor()) {
 				methodName = "$init";
 			} else {
 				methodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getName());
 			}
-			
+
 			String hookFunctionName = "hook_method_" + methodName;
 			String methodImpl = generateMethodImplementation(javaMethod, fullClassName);
-			
+
 			if (methodImpl != null && !methodImpl.isEmpty()) {
 				// 生成方法 hook 函数
 				methodFunctions.append("        function ").append(hookFunctionName).append("() {\n");
 				methodFunctions.append(methodImpl).append("\n");
 				methodFunctions.append("            console.warn(`[*] ").append(hookFunctionName).append(" is injected!`);\n");
 				methodFunctions.append("        }\n\n");
-				
+
 				// 添加调用
 				methodCalls.append("        ").append(hookFunctionName).append("();\n");
 			}
 		}
-		
+
 		// 构建完整的类 hook 函数
 		return "function " + functionName + "(){\n" +
 				"    Java.perform(function () {\n" +
@@ -439,10 +446,10 @@ public final class FridaAction extends JNodeAction {
 	private String generateMethodImplementation(JavaMethod javaMethod, String fullClassName) {
 		MethodNode mth = javaMethod.getMethodNode();
 		MethodInfo methodInfo = mth.getMethodInfo();
-		
+
 		// 获取 Smali 格式的方法签名
 		String smaliSignature = methodInfo.makeSignature(true);
-		
+
 		String methodName;
 		// 处理构造方法和静态初始化方法
 		if (methodInfo.isConstructor()) {
@@ -452,12 +459,12 @@ public final class FridaAction extends JNodeAction {
 		} else {
 			methodName = StringEscapeUtils.escapeEcmaScript(methodInfo.getName());
 		}
-		
+
 		// 处理重载方法
 		String overload = isOverloaded(mth) ? ".overload(" +
 				methodInfo.getArgumentsTypes().stream()
 						.map(this::parseArgType).collect(Collectors.joining(", ")) + ")" : "";
-		
+
 		List<String> argNames = mth.collectArgNodes().stream()
 				.map(VarNode::getName).collect(Collectors.toList());
 		String args = String.join(", ", argNames);
@@ -465,7 +472,7 @@ public final class FridaAction extends JNodeAction {
 				"args are as follows:\\n" + argNames.stream()
 						.map(arg -> "    ->" + arg + "= ${" + arg + "}")
 						.collect(Collectors.joining("\\n"));
-		
+
 		// 检查是否有 Map 参数需要打印
 		List<ArgType> argTypes = methodInfo.getArgumentsTypes();
 		StringBuilder mapLogging = new StringBuilder();
@@ -481,11 +488,11 @@ public final class FridaAction extends JNodeAction {
 				}
 			}
 		}
-		
+
 		// 判断是否有返回值
 		boolean hasReturnValue = !(methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID);
 		String newMethodName = methodInfo.isConstructor() ? methodName : StringEscapeUtils.escapeEcmaScript(methodInfo.getAlias());
-		
+
 		// 构建方法 implementation（用于嵌套在 function 内部，所以使用 3 级缩进）
 		String implementation = "            // Smali: " + smaliSignature + "\n" +
 				"            " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n" +
@@ -501,7 +508,7 @@ public final class FridaAction extends JNodeAction {
 								"                // showJavaStacks();\n" +
 								"                console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! no retval!`);\n") +
 				"            };";
-		
+
 		return implementation;
 	}
 

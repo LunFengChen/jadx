@@ -118,6 +118,9 @@ public final class FridaRPCAction extends JNodeAction {
 		// 改成完整类名, 防止变量重复的可能
 		String fullClassName = mth.getParentClass().getFullName().replace(".", "_");
 
+		// 判断是否为非静态方法（需要实例化）
+		boolean isInstanceMethod = !mth.getAccessFlags().isStatic() && !methodInfo.isConstructor();
+		
 		// 构建参数声明部分
 		StringBuilder paramDeclarations = new StringBuilder();
 		if (!argVars.isEmpty()) {
@@ -130,29 +133,31 @@ public final class FridaRPCAction extends JNodeAction {
 
 		// 使用三目运算符处理有无返回值的情况
 		boolean hasReturnValue = !(methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID);
+		
+		// 对于实例方法，使用 instance 调用；对于静态方法，使用类名调用
+		String caller = isInstanceMethod ? "instance" : fullClassName;
 		String callStatement = hasReturnValue
-				? "var retval = " + fullClassName + "[\"" + methodName + "\"]" + overload + "(" + args + ");"
-				: fullClassName + "[\"" + methodName + "\"]" + overload + "(" + args + ");";
+				? "var retval = " + caller + "[\"" + methodName + "\"]" + overload + "(" + args + ");"
+				: caller + "[\"" + methodName + "\"]" + overload + "(" + args + ");";
 
 		String logStatement = hasReturnValue
 				? "console.warn(`[*] " + fullClassName + "." + methodName + " is called! \\nretval= ${retval}`);"
 				: "console.warn(`[*] " + fullClassName + "." + methodName + " is called! no retval!`);";
 
 		// 构建主动调用函数体
-		String functionBody = "function call_" + methodName + "(){\n"
-				+ "    Java.perform(function () {\n"
+		String functionBody = "function call_" + methodName	 + "(){\n"
+				+ "    " + (hasReturnValue ? "return " : "") + "Java.perform(function () {\n"
 				+ "        // Smali signature: " + smaliSignature + "\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
-				+ (!mth.getAccessFlags().isStatic() && !methodInfo.isConstructor()
-						? "        // you should hava a instance to call func\n"
-						+ "        // e.g.: var instance = " + fullClassName + ".$new(?); instance.func(...);\n"
+				+ (isInstanceMethod
+						? "        // you should hava a instance to call func, please check init func's args\n"
+						+ "        var instance = " + fullClassName + ".$new();\n"
 						: "")
 				+ paramDeclarations.toString()
 				+ "        " + callStatement + "\n"
 				+ "        " + logStatement + "\n"
 				+ (hasReturnValue ? "        return retval;\n" : "")
 				+ "    });\n"
-				+ "    console.warn(`[*] call_" + methodName + " is injected!`);\n"
 				+ "};\n";
 
 		// 构建RPC导出函数名
@@ -161,12 +166,10 @@ public final class FridaRPCAction extends JNodeAction {
 			rpcExportFunction = "callInit";
 		}
 
-		// 构建rpc.exports部分 - 使用完全相同的逻辑，只是包装在rpc.exports中
+		// 构建rpc.exports部分 - 直接调用 call_ 函数，避免嵌套 Java.perform
 		String rpcExports = "rpc.exports = {\n"
 				+ "    " + rpcExportFunction + ": function() {\n"
-				+ "        Java.perform(function () {\n"
-				+ "            " + (hasReturnValue ? "return " : "") + "call_" + methodName + "();\n"
-				+ "        });\n"
+				+ "        return call_" + methodName + "();\n"
 				+ "    }\n"
 				+ "};\n\n";
 
