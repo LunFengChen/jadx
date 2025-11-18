@@ -84,6 +84,10 @@ public final class FridaRPCAction extends JNodeAction {
 	private String getMethodSnippet(JavaMethod javaMethod, JClass jc) {
 		MethodNode mth = javaMethod.getMethodNode();
 		MethodInfo methodInfo = mth.getMethodInfo();
+
+		// 获取 Smali 格式的方法签名用于添加注释
+		String smaliSignature = methodInfo.makeSignature(true);
+
 		String methodName;
 
 		// 处理构造方法
@@ -137,14 +141,16 @@ public final class FridaRPCAction extends JNodeAction {
 		// 构建主动调用函数体
 		String functionBody = "function call_" + methodName + "(){\n"
 				+ "    Java.perform(function () {\n"
+				+ "        // Smali signature: " + smaliSignature + "\n"
 				+ "        " + String.format("let %s = Java.use(\"%s\");\n", fullClassName, mth.getParentClass().getFullName())
 				+ (!mth.getAccessFlags().isStatic() && !methodInfo.isConstructor()
 						? "        // you should hava a instance to call func\n"
-						+ "        // e.g.: var instance = " + fullClassName + ".$new(); instance.func(...);\n"
+						+ "        // e.g.: var instance = " + fullClassName + ".$new(?); instance.func(...);\n"
 						: "")
 				+ paramDeclarations.toString()
 				+ "        " + callStatement + "\n"
 				+ "        " + logStatement + "\n"
+				+ (hasReturnValue ? "        return retval;\n" : "")
 				+ "    });\n"
 				+ "    console.warn(`[*] call_" + methodName + " is injected!`);\n"
 				+ "};\n";
@@ -157,10 +163,9 @@ public final class FridaRPCAction extends JNodeAction {
 
 		// 构建rpc.exports部分 - 使用完全相同的逻辑，只是包装在rpc.exports中
 		String rpcExports = "rpc.exports = {\n"
-				+ "    " + rpcExportFunction + ": function(?) {\n"
+				+ "    " + rpcExportFunction + ": function() {\n"
 				+ "        Java.perform(function () {\n"
-				+ (argVars.isEmpty() ? "" : "            // set your args\n")
-				+ "            " + (hasReturnValue ? "return " : "") + "call_" + methodName + "(?);\n"
+				+ "            " + (hasReturnValue ? "return " : "") + "call_" + methodName + "();\n"
 				+ "        });\n"
 				+ "    }\n"
 				+ "};\n\n";
