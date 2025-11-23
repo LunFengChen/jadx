@@ -108,9 +108,14 @@ public final class FridaAction extends JNodeAction {
 		}
 
 		// 处理重载方法: overload
-		String overload = isOverloaded(mth) ? ".overload(" +
-				methodInfo.getArgumentsTypes().stream()
-						.map(this::parseArgType).collect(Collectors.joining(", ")) + ")" : "";
+		String overload = "";
+		String overloadArgs = "";
+		if (isOverloaded(mth)) {
+			String argsStr = methodInfo.getArgumentsTypes().stream()
+					.map(this::parseArgType).collect(Collectors.joining(", "));
+			overload = ".overload(" + argsStr + ")";
+			overloadArgs = "(" + argsStr + ")";
+		}
 
 		List<String> argNames = mth.collectArgNodes().stream()
 				.map(VarNode::getName).collect(Collectors.toList());
@@ -193,11 +198,20 @@ public final class FridaAction extends JNodeAction {
 			LOG.info("Using fallback detection for String[]: {}", hasStringArrayParameter);
 		}
 
+		// 检查直接参数或泛型参数中是否包含 Object[]
+		boolean hasObjectArrayParameter = argTypes.stream()
+				.anyMatch(argType -> argType.isArray() && !argType.getArrayElement().equals(ArgType.BYTE) && !argType.getArrayElement().equals(ArgType.STRING));
+		// 如果 ArgType 检测失败，使用方法签名字符串作为后备方案
+		if (!hasObjectArrayParameter && methodSignature != null) {
+			// 简单的 heuristic
+		}
+
 		// 输出检测结果
 		LOG.info("Detection results:");
 		LOG.info("  hasMapParameter: {}", hasMapParameter);
 		LOG.info("  hasByteArrayParameter: {}", hasByteArrayParameter);
 		LOG.info("  hasStringArrayParameter: {}", hasStringArrayParameter);
+		LOG.info("  hasObjectArrayParameter: {}", hasObjectArrayParameter);
 
 		// 构建辅助函数
 		int helperFuncIndex = 1;
@@ -206,10 +220,13 @@ public final class FridaAction extends JNodeAction {
 			helperFunctions += getHelpfunction("showJavaMap", helperFuncIndex++);
 		}
 		if (hasByteArrayParameter) {
-			helperFunctions += getHelpfunction("bytesToString", helperFuncIndex++);
+			helperFunctions += getHelpfunction("showByteArray", helperFuncIndex++);
 		}
 		if (hasStringArrayParameter) {
 			helperFunctions += getHelpfunction("showStringArray", helperFuncIndex++);
+		}
+		if (hasObjectArrayParameter) {
+			helperFunctions += getHelpfunction("showObjectArray", helperFuncIndex++);
 		}
 		// 添加Map参数显示逻辑
 		StringBuilder mapLogging = new StringBuilder();
@@ -226,23 +243,45 @@ public final class FridaAction extends JNodeAction {
 			}
 		}
 
+		StringBuilder byteArrayLogging = new StringBuilder();
+		StringBuilder objectArrayLogging = new StringBuilder();
+		for (int i = 0; i < argNames.size(); i++) {
+			if (i < argTypes.size()) {
+				ArgType argType = argTypes.get(i);
+				String argName = argNames.get(i);
+				if (argType.isObject() &&
+						(argType.getObject().contains("Map") ||
+								argType.getObject().contains("HashMap") ||
+								argType.getObject().contains("TreeMap"))) {
+					mapLogging.append("                showJavaMap(").append(argName).append(", \"").append(argName).append("\");\n");
+				}
+				if (argType.isArray() && argType.getArrayElement().equals(ArgType.BYTE)) {
+					byteArrayLogging.append("                showByteArray(").append(argName).append(", \"").append(argName).append("\");\n");
+				} else if (argType.isArray() && !argType.getArrayElement().equals(ArgType.STRING)) {
+					objectArrayLogging.append("                showObjectArray(").append(argName).append(", \"").append(argName).append("\");\n");
+				}
+			}
+		}
+
 		// 使用三目运算符判断是否有返回值
 		boolean hasReturnValue = !(methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID);
 		String newMethodName = methodInfo.isConstructor() ? methodName : StringEscapeUtils.escapeEcmaScript(methodInfo.getAlias());
 
 		// 使用三目运算符构建函数实现体
 		String functionImplementation = "        " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n" +
-				"            console.log(`[->] " + fullClassName + "." + newMethodName + " is called! " + logArgs + "`);\n" +
+				"            console.log(`[->] " + fullClassName + "." + newMethodName + overloadArgs + " is called! " + logArgs + "`);\n" +
 				mapLogging.toString() +
+				byteArrayLogging.toString() +
+				objectArrayLogging.toString() +
 				(hasReturnValue ?
 						"            var retval = this[\"" + methodName + "\"](" + args + ");\n" +
 								"            // showJavaStacks();\n" +
-								"            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! \\n    retval= ${retval}`);\n" +
+								"            console.log(`[<-] " + fullClassName + "." + newMethodName + overloadArgs + " ended! \\n    retval= ${retval}`);\n" +
 								"            return retval;\n"
 						:
 						"            this[\"" + methodName + "\"](" + args + ");\n" +
 								"            // showJavaStacks();\n" +
-								"            console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! no retval!`);\n") +
+								"            console.log(`[<-] " + fullClassName + "." + newMethodName + overloadArgs + " ended! no retval!`);\n") +
 				"        };\n";
 
 		return "// Smali signature: " + smaliSignature + "\n" +
@@ -283,6 +322,13 @@ public final class FridaAction extends JNodeAction {
 						"            console.log('  ' + key + ' = ' + value_str);\n" +
 						"        }\n" +
 						"    }\n";
+			case "showByteArray":
+				return "    // 辅助函数" + functionIndex + ": 打印字节数组\n" +
+						"    function showByteArray(byteArray, name) {\n" +
+						"        if (byteArray == null) return;\n" +
+						"        var result = Java.use('java.lang.String').$new(Java.array('byte', byteArray)).toString();\n" +
+						"        console.log(name + \": \" + result);\n" +
+						"    }\n";
 			case "bytesToString":
 				/*
 						"    // (1) method 1\n" +
@@ -305,6 +351,22 @@ public final class FridaAction extends JNodeAction {
 						"        for (let i = 0; i < length; i++) {\n" +
 						"            var item = JavaClass_Array.get(strArr, i);\n" +
 						"            console.log('  [' + i + '] = ' + (item != null ? item.toString() : 'null'));\n" +
+						"        }\n" +
+						"    }\n";
+			case "showObjectArray":
+				return "    // 辅助函数" + functionIndex + ": 打印对象数组\n" +
+						"    function showObjectArray(objArr, name) {\n" +
+						"        if (objArr == null) return;\n" +
+						"        var length = objArr.length;\n" +
+						"        console.log(name + ' length: ' + length);\n" +
+						"        for (let i = 0; i < length; i++) {\n" +
+						"            var item = objArr[i];\n" +
+						"            if (item != null && item.getClass().getName() === \"[B\") {\n" +
+						"                var str = Java.use('java.lang.String').$new(Java.array('byte', item)).toString();\n" +
+						"                console.log('  [' + i + '] = (byte[]) ' + str);\n" +
+						"            } else {\n" +
+						"                console.log('  [' + i + '] = ' + (item != null ? item.toString() : 'null'));\n" +
+						"            }\n" +
 						"        }\n" +
 						"    }\n";
 			case "objectToGson":
@@ -345,8 +407,9 @@ public final class FridaAction extends JNodeAction {
 		// 收集所有需要的辅助函数类型
 		boolean needsShowJavaStacks = true; // 总是包含
 		boolean needsShowJavaMap = false;
-		boolean needsBytesToString = false;
+		boolean needsShowByteArray = false;
 		boolean needsShowStringArray = false;
+		boolean needsShowObjectArray = false;
 
 		// 分析所有方法的参数类型
 		for (JavaMethod javaMethod : methodList) {
@@ -371,13 +434,19 @@ public final class FridaAction extends JNodeAction {
 			}
 
 			// 检查 byte[] 参数
-			if (!needsBytesToString && methodSignature != null) {
-				needsBytesToString = methodSignature.contains("byte[]");
+			if (!needsShowByteArray && methodSignature != null) {
+				needsShowByteArray = methodSignature.contains("byte[]");
 			}
 
 			// 检查 String[] 参数
 			if (!needsShowStringArray && methodSignature != null) {
 				needsShowStringArray = methodSignature.contains("String[]");
+			}
+
+			// 检查 Object[] 参数
+			if (!needsShowObjectArray) {
+				needsShowObjectArray = argTypes.stream()
+						.anyMatch(argType -> argType.isArray() && !argType.getArrayElement().equals(ArgType.BYTE) && !argType.getArrayElement().equals(ArgType.STRING));
 			}
 		}
 
@@ -388,11 +457,15 @@ public final class FridaAction extends JNodeAction {
 		if (needsShowJavaMap) {
 			helperFunctions.append(getHelpfunction("showJavaMap", helperIndex++));
 		}
-		if (needsBytesToString) {
+		if (needsShowByteArray) {
+			helperFunctions.append(getHelpfunction("showByteArray", helperIndex++));
 			helperFunctions.append(getHelpfunction("bytesToString", helperIndex++));
 		}
 		if (needsShowStringArray) {
 			helperFunctions.append(getHelpfunction("showStringArray", helperIndex++));
+		}
+		if (needsShowObjectArray) {
+			helperFunctions.append(getHelpfunction("showObjectArray", helperIndex++));
 		}
 
 		// 构建所有方法的 hook 函数
@@ -461,9 +534,14 @@ public final class FridaAction extends JNodeAction {
 		}
 
 		// 处理重载方法
-		String overload = isOverloaded(mth) ? ".overload(" +
-				methodInfo.getArgumentsTypes().stream()
-						.map(this::parseArgType).collect(Collectors.joining(", ")) + ")" : "";
+		String overload = "";
+		String overloadArgs = "";
+		if (isOverloaded(mth)) {
+			String argsStr = methodInfo.getArgumentsTypes().stream()
+					.map(this::parseArgType).collect(Collectors.joining(", "));
+			overload = ".overload(" + argsStr + ")";
+			overloadArgs = "(" + argsStr + ")";
+		}
 
 		List<String> argNames = mth.collectArgNodes().stream()
 				.map(VarNode::getName).collect(Collectors.toList());
@@ -476,6 +554,8 @@ public final class FridaAction extends JNodeAction {
 		// 检查是否有 Map 参数需要打印
 		List<ArgType> argTypes = methodInfo.getArgumentsTypes();
 		StringBuilder mapLogging = new StringBuilder();
+		StringBuilder byteArrayLogging = new StringBuilder();
+		StringBuilder objectArrayLogging = new StringBuilder();
 		for (int i = 0; i < argNames.size(); i++) {
 			if (i < argTypes.size()) {
 				ArgType argType = argTypes.get(i);
@@ -485,6 +565,11 @@ public final class FridaAction extends JNodeAction {
 								argType.getObject().contains("HashMap") ||
 								argType.getObject().contains("TreeMap"))) {
 					mapLogging.append("                showJavaMap(").append(argName).append(", \"").append(argName).append("\");\n");
+				}
+				if (argType.isArray() && argType.getArrayElement().equals(ArgType.BYTE)) {
+					byteArrayLogging.append("                showByteArray(").append(argName).append(", \"").append(argName).append("\");\n");
+				} else if (argType.isArray() && !argType.getArrayElement().equals(ArgType.STRING)) {
+					objectArrayLogging.append("                showObjectArray(").append(argName).append(", \"").append(argName).append("\");\n");
 				}
 			}
 		}
@@ -496,17 +581,19 @@ public final class FridaAction extends JNodeAction {
 		// 构建方法 implementation（用于嵌套在 function 内部，所以使用 3 级缩进）
 		String implementation = "            // Smali: " + smaliSignature + "\n" +
 				"            " + fullClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n" +
-				"                console.log(`[->] " + fullClassName + "." + newMethodName + " is called! " + logArgs + "`);\n" +
+				"                console.log(`[->] " + fullClassName + "." + newMethodName + overloadArgs + " is called! " + logArgs + "`);\n" +
 				mapLogging.toString() +
+				byteArrayLogging.toString() +
+				objectArrayLogging.toString() +
 				(hasReturnValue ?
 						"                var retval = this[\"" + methodName + "\"](" + args + ");\n" +
 								"                // showJavaStacks();\n" +
-								"                console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! \\n    retval= ${retval}`);\n" +
+								"                console.log(`[<-] " + fullClassName + "." + newMethodName + overloadArgs + " ended! \\n    retval= ${retval}`);\n" +
 								"                return retval;\n"
 						:
 						"                this[\"" + methodName + "\"](" + args + ");\n" +
 								"                // showJavaStacks();\n" +
-								"                console.log(`[<-] " + fullClassName + "." + newMethodName + " ended! no retval!`);\n") +
+								"                console.log(`[<-] " + fullClassName + "." + newMethodName + overloadArgs + " ended! no retval!`);\n") +
 				"            };";
 
 		return implementation;

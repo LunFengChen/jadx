@@ -99,10 +99,12 @@ public final class FridaRPCAction extends JNodeAction {
 
 		// 处理重载方法: overload
 		String overload = "";
+		String overloadArgs = "";
 		if (isOverloaded(mth)) {
-			String overloadArgs = methodInfo.getArgumentsTypes().stream()
+			String argsStr = methodInfo.getArgumentsTypes().stream()
 					.map(this::parseArgType).collect(Collectors.joining(", "));
-			overload = ".overload(" + overloadArgs + ")";
+			overload = ".overload(" + argsStr + ")";
+			overloadArgs = "(" + argsStr + ")";
 		}
 
 		List<String> argNames = mth.collectArgNodes().stream()
