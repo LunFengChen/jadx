@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+      - "v*.*.*-xiaofeng.*"
 
 # additional permissions for provided GitHub token to create new release
 permissions:
