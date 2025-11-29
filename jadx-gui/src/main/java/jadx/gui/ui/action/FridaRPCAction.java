@@ -123,12 +123,46 @@ public final class FridaRPCAction extends JNodeAction {
 		// 判断是否为非静态方法（需要实例化）
 		boolean isInstanceMethod = !mth.getAccessFlags().isStatic() && !methodInfo.isConstructor();
 		
+		// 获取参数类型列表
+		List<ArgType> argTypes = methodInfo.getArgumentsTypes();
+		
 		// 构建参数声明部分
 		StringBuilder paramDeclarations = new StringBuilder();
+		boolean hasContextParam = false;
 		if (!argVars.isEmpty()) {
 			paramDeclarations.append("        // please check your args! you can hook this function to get example args\n");
-			for (String argVar : argVars) {
-				paramDeclarations.append("        var ").append(argVar).append(" = ?;\n");
+			
+			// 检查是否有Context类型的参数
+			for (int i = 0; i < argVars.size(); i++) {
+				if (i < argTypes.size()) {
+					ArgType argType = argTypes.get(i);
+					if (isContextType(argType)) {
+						hasContextParam = true;
+						break;
+					}
+				}
+			}
+			
+			// 如果有Context参数，先生成获取Context的代码
+			if (hasContextParam) {
+				paramDeclarations.append("        var context = Java.use(\"android.app.ActivityThread\").currentApplication().getApplicationContext();\n");
+			}
+			
+			// 生成每个参数的声明
+			for (int i = 0; i < argVars.size(); i++) {
+				String argVar = argVars.get(i);
+				if (i < argTypes.size()) {
+					ArgType argType = argTypes.get(i);
+					if (isContextType(argType)) {
+						// 如果是Context类型，使用获取到的context
+						paramDeclarations.append("        var ").append(argVar).append(" = context;\n");
+					} else {
+						// 其他类型使用占位符
+						paramDeclarations.append("        var ").append(argVar).append(" = ?;\n");
+					}
+				} else {
+					paramDeclarations.append("        var ").append(argVar).append(" = ?;\n");
+				}
 			}
 			paramDeclarations.append("\n");
 		}
@@ -212,5 +246,24 @@ public final class FridaRPCAction extends JNodeAction {
 			typeStr = x.toString();
 		}
 		return "'" + typeStr + "'";
+	}
+
+	/**
+	 * 检测参数类型是否为Context或其子类
+	 */
+	private boolean isContextType(ArgType argType) {
+		if (!argType.isObject()) {
+			return false;
+		}
+		String typeName = argType.getObject();
+		// 检查是否为Context或其常见子类
+		return "android.content.Context".equals(typeName)
+				|| "android.app.Application".equals(typeName)
+				|| "android.app.Activity".equals(typeName)
+				|| "android.app.Service".equals(typeName)
+				|| "android.content.ContextWrapper".equals(typeName)
+				|| typeName.endsWith("Activity")
+				|| typeName.endsWith("Service")
+				|| typeName.endsWith("Application");
 	}
 }
