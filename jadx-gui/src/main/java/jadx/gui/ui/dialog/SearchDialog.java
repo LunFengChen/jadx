@@ -568,6 +568,15 @@ public class SearchDialog extends CommonSearchDialog {
 		UiUtils.notUiThreadGuard();
 		stopSearchTask();
 		UiUtils.uiRun(this::resetSearch);
+		
+		// 自动处理路径格式: 将斜杠转换为点（例如: com/example/Class -> com.example.Class）
+		String processedText = processSearchText(text);
+		if (!text.equals(processedText)) {
+			// 如果文本被转换了，更新搜索框显示
+			UiUtils.uiRun(() -> searchField.setText(processedText));
+			text = processedText;
+		}
+		
 		searchTask = prepareSearch(text);
 		if (searchTask == null) {
 			return;
@@ -875,5 +884,40 @@ public class SearchDialog extends CommonSearchDialog {
 			mainWindow.getTabbedPane().removeChangeListener(activeTabListener);
 			activeTabListener = null;
 		}
+	}
+
+	/**
+	 * 处理搜索文本，自动将路径格式（斜杠）转换为点分隔格式
+	 * 例如: com/xunmeng/pinduoduo/secure/EU -> com.xunmeng.pinduoduo.secure.EU
+	 * 注意：只在搜索类、方法、字段时转换，搜索代码、资源、注释时不转换
+	 */
+	private String processSearchText(String text) {
+		if (text == null || text.isEmpty()) {
+			return text;
+		}
+		
+		// 只在搜索类、方法、字段时才进行路径格式转换
+		boolean shouldConvert = options.contains(CLASS) || options.contains(METHOD) || options.contains(FIELD);
+		if (!shouldConvert) {
+			return text;
+		}
+		
+		// 如果开启了正则表达式搜索，不自动转换（避免破坏用户的正则表达式）
+		if (options.contains(USE_REGEX)) {
+			return text;
+		}
+		
+		// 检查文本是否包含斜杠，且看起来像包路径
+		// 包路径特征: 包含斜杠，且斜杠分隔的部分都是有效的Java标识符
+		if (text.contains("/")) {
+			// 简单启发式: 如果包含斜杠且没有空格，可能是路径格式
+			if (!text.contains(" ")) {
+				String converted = text.replace('/', '.');
+				LOG.debug("Auto-converted search text from '{}' to '{}'", text, converted);
+				return converted;
+			}
+		}
+		
+		return text;
 	}
 }
