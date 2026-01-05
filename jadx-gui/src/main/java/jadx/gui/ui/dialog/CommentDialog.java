@@ -119,7 +119,7 @@ public class CommentDialog extends CommonDialog {
 		commentArea = new JTextArea();
 		TextStandardActions.attach(commentArea);
 		commentArea.setEditable(true);
-		commentArea.setFont(mainWindow.getSettings().getFont());
+		commentArea.setFont(mainWindow.getSettings().getCodeFont());
 		commentArea.setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		commentArea.addKeyListener(new KeyAdapter() {
@@ -128,7 +128,7 @@ public class CommentDialog extends CommonDialog {
 				switch (e.getKeyCode()) {
 					case KeyEvent.VK_ENTER:
 						if (e.isShiftDown() || e.isControlDown()) {
-							commentArea.append("\n");
+							commentArea.insert("\n", commentArea.getCaretPosition());
 						} else {
 							apply();
 						}

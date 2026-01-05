@@ -1,4 +1,4 @@
-package jadx.gui.ui.dialog;
+package jadx.gui.report;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -8,7 +8,6 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Toolkit;
-import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -32,12 +31,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jadx.api.JadxDecompiler;
+import jadx.cli.config.JadxConfigAdapter;
 import jadx.commons.app.JadxSystemInfo;
 import jadx.core.utils.exceptions.JadxRuntimeException;
 import jadx.gui.settings.JadxSettings;
-import jadx.gui.settings.JadxSettingsAdapter;
+import jadx.gui.settings.JadxSettingsData;
+import jadx.gui.ui.MainWindow;
 import jadx.gui.utils.LafManager;
 import jadx.gui.utils.Link;
+import jadx.gui.utils.TextStandardActions;
 
 public class ExceptionDialog extends JDialog {
 
@@ -45,17 +47,8 @@ public class ExceptionDialog extends JDialog {
 
 	private static final String FMT_DETAIL_LENGTH = "-13";
 
-	public static void registerUncaughtExceptionHandler() {
-		Thread.setDefaultUncaughtExceptionHandler(ExceptionDialog::showExceptionDialog);
-	}
-
-	public static void showExceptionDialog(Thread thread, Throwable ex) {
-		LOG.error("Exception was thrown", ex);
-		new ExceptionDialog(thread, ex);
-	}
-
-	public ExceptionDialog(Thread thread, Throwable ex) {
-		super((Window) null, "Jadx Error");
+	ExceptionDialog(MainWindow mainWindow, ExceptionData data) {
+		super(mainWindow, "Jadx Error");
 		this.getContentPane().setLayout(new BorderLayout());
 		JPanel titlePanel = new JPanel(new GridBagLayout());
 		GridBagConstraints c = new GridBagConstraints();
@@ -83,6 +76,7 @@ public class ExceptionDialog extends JDialog {
 			LOG.error("failed to get program arguments", t);
 		}
 
+		Throwable ex = data.getException();
 		StringWriter stackTraceWriter = new StringWriter(1024);
 		ex.printStackTrace(new PrintWriter(stackTraceWriter));
 		final String stackTrace = stackTraceWriter.toString();
@@ -95,13 +89,13 @@ public class ExceptionDialog extends JDialog {
 			issueTitle = ex.getClass().getSimpleName();
 		}
 
-		String message = "Please describe what you did before the error occurred.\n";
-		message += "**IMPORTANT!** If the error occurs with a specific APK file please attach or provide link to apk file!\n";
+		String message = "Please describe what you did before the error occurred.\n\n";
+		message += "**IMPORTANT!** If the error occurs with a specific APK file please attach or provide link to apk file!\n\n";
 
 		StringBuilder detailsIssueBuilder = new StringBuilder();
 		details.forEach((key, value) -> detailsIssueBuilder.append(String.format("* %s: %s\n", key, value)));
 
-		String body = String.format("%s %s\n```\n%s\n```", message, detailsIssueBuilder, stackTrace);
+		String body = String.format("%s%s\n```\n%s\n```", message, detailsIssueBuilder, stackTrace);
 
 		String issueBody;
 		try {
@@ -111,13 +105,19 @@ public class ExceptionDialog extends JDialog {
 			issueBody = "Please copy the displayed text in the Jadx error dialog and paste it here";
 		}
 
-		String url = String.format("https://github.com/skylot/jadx/issues/new?labels=bug&title=%s&body=%s", issueTitle, issueBody);
-		Link issueLink = new Link("<html><u><b>Create a new issue at GitHub</b></u></html>", url);
 		c.gridy = 0;
 		titlePanel.add(titleLabel, c);
-		c.gridy = 1;
-		titlePanel.add(issueLink, c);
+
+		String project = data.getGithubProject();
+		if (!project.isEmpty()) {
+			String url = String.format("https://github.com/%s/issues/new?labels=bug&title=%s&body=%s",
+					project, issueTitle, issueBody);
+			Link issueLink = new Link("<html><u><b>Create a new issue at GitHub</b></u></html>", url);
+			c.gridy = 1;
+			titlePanel.add(issueLink, c);
+		}
 		JTextArea messageArea = new JTextArea();
+		TextStandardActions.attach(messageArea);
 		messageArea.setEditable(false);
 		messageArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 		messageArea.setForeground(Color.BLACK);
@@ -130,10 +130,10 @@ public class ExceptionDialog extends JDialog {
 
 		JPanel buttonPanel = new JPanel();
 		JButton exitButton = new JButton("Terminate Jadx");
-		exitButton.addActionListener((event) -> System.exit(1));
+		exitButton.addActionListener(event -> System.exit(1));
 		buttonPanel.add(exitButton);
 		JButton closeButton = new JButton("Go back to Jadx");
-		closeButton.addActionListener((event) -> setVisible(false));
+		closeButton.addActionListener(event -> setVisible(false));
 		buttonPanel.add(closeButton);
 		JScrollPane messageAreaScroller = new JScrollPane(messageArea);
 		messageAreaScroller.setMinimumSize(new Dimension(600, 400));
@@ -152,7 +152,7 @@ public class ExceptionDialog extends JDialog {
 		final int y = (screenSize.height - getHeight()) / 2;
 		setLocation(x, y);
 
-		getRootPane().registerKeyboardAction((event) -> setVisible(false),
+		getRootPane().registerKeyboardAction(event -> setVisible(false),
 				KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
 				JComponent.WHEN_IN_FOCUSED_WINDOW);
 
@@ -172,13 +172,19 @@ public class ExceptionDialog extends JDialog {
 		try {
 			throwTestException();
 		} catch (Exception e) {
-			showExceptionDialog(Thread.currentThread(), e);
+			new ExceptionDialog(null, new ExceptionData(e, JadxExceptionHandler.MAIN_PROJECT_STRING));
 		}
 	}
 
 	public static void main(String[] args) {
-		JadxSettings settings = JadxSettingsAdapter.load();
-		LafManager.init(settings);
+		JadxConfigAdapter<JadxSettingsData> configAdapter = JadxSettings.buildConfigAdapter();
+		configAdapter.useConfigRef("");
+		JadxSettingsData settingsData = configAdapter.load();
+		if (settingsData != null) {
+			JadxSettings settings = new JadxSettings(configAdapter);
+			settings.loadSettingsData(settingsData);
+			LafManager.init(settings);
+		}
 		showTestExceptionDialog();
 	}
 }

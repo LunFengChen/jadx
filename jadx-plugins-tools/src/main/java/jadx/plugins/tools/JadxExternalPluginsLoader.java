@@ -23,13 +23,15 @@ import jadx.core.utils.exceptions.JadxRuntimeException;
 public class JadxExternalPluginsLoader implements JadxPluginLoader {
 	private static final Logger LOG = LoggerFactory.getLogger(JadxExternalPluginsLoader.class);
 
+	public static final String JADX_PLUGIN_CLASSLOADER_PREFIX = "jadx-plugin:";
+
 	private final List<URLClassLoader> classLoaders = new ArrayList<>();
 
 	@Override
 	public List<JadxPlugin> load() {
 		close();
 		long start = System.currentTimeMillis();
-		Map<Class<? extends JadxPlugin>, JadxPlugin> map = new HashMap<>();
+		Map<String, JadxPlugin> map = new HashMap<>();
 		loadFromClsLoader(map, thisClassLoader());
 		loadInstalledPlugins(map);
 
@@ -43,7 +45,7 @@ public class JadxExternalPluginsLoader implements JadxPluginLoader {
 	}
 
 	public JadxPlugin loadFromJar(Path jar) {
-		Map<Class<? extends JadxPlugin>, JadxPlugin> map = new HashMap<>();
+		Map<String, JadxPlugin> map = new HashMap<>();
 		loadFromJar(map, jar);
 		int loaded = map.size();
 		if (loaded == 0) {
@@ -57,25 +59,29 @@ public class JadxExternalPluginsLoader implements JadxPluginLoader {
 
 	}
 
-	private void loadFromClsLoader(Map<Class<? extends JadxPlugin>, JadxPlugin> map, ClassLoader classLoader) {
-		ServiceLoader.load(JadxPlugin.class, classLoader)
-				.stream()
-				.filter(p -> p.type().getClassLoader() == classLoader)
-				.filter(p -> !map.containsKey(p.type()))
-				.forEach(p -> map.put(p.type(), p.get()));
+	private void loadFromClsLoader(Map<String, JadxPlugin> map, ClassLoader classLoader) {
+		ServiceLoader<JadxPlugin> serviceLoader = ServiceLoader.load(JadxPlugin.class, classLoader);
+		for (ServiceLoader.Provider<JadxPlugin> provider : serviceLoader.stream().collect(Collectors.toList())) {
+			Class<? extends JadxPlugin> pluginClass = provider.type();
+			String clsName = pluginClass.getName();
+			if (!map.containsKey(clsName)
+					&& pluginClass.getClassLoader() == classLoader) {
+				map.put(clsName, provider.get());
+			}
+		}
 	}
 
-	private void loadInstalledPlugins(Map<Class<? extends JadxPlugin>, JadxPlugin> map) {
+	private void loadInstalledPlugins(Map<String, JadxPlugin> map) {
 		List<Path> jars = JadxPluginsTools.getInstance().getEnabledPluginJars();
 		for (Path jar : jars) {
 			loadFromJar(map, jar);
 		}
 	}
 
-	private void loadFromJar(Map<Class<? extends JadxPlugin>, JadxPlugin> map, Path jar) {
+	private void loadFromJar(Map<String, JadxPlugin> map, Path jar) {
 		try {
 			File jarFile = jar.toFile();
-			String clsLoaderName = "jadx-plugin:" + jarFile.getName();
+			String clsLoaderName = JADX_PLUGIN_CLASSLOADER_PREFIX + jarFile.getName();
 			URL[] urls = new URL[] { jarFile.toURI().toURL() };
 			URLClassLoader pluginClsLoader = new URLClassLoader(clsLoaderName, urls, thisClassLoader());
 			classLoaders.add(pluginClsLoader);

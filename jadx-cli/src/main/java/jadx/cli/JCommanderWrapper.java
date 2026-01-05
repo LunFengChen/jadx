@@ -25,7 +25,6 @@ import jadx.api.plugins.options.OptionDescription;
 import jadx.core.plugins.JadxPluginManager;
 import jadx.core.plugins.PluginContext;
 import jadx.core.utils.Utils;
-import jadx.plugins.tools.JadxExternalPluginsLoader;
 
 public class JCommanderWrapper {
 	private final JCommander jc;
@@ -41,12 +40,12 @@ public class JCommanderWrapper {
 
 	public boolean parse(String[] args) {
 		try {
-			jc.parse(args);
+			String[] fixedArgs = fixArgsForEmptySaveConfig(args);
+			jc.parse(fixedArgs);
 			applyFiles(argsObj);
 			return true;
 		} catch (ParameterException e) {
 			System.err.println("Arguments parse error: " + e.getMessage());
-			printUsage();
 			return false;
 		}
 	}
@@ -94,6 +93,41 @@ public class JCommanderWrapper {
 		}
 		// simple override
 		return value;
+	}
+
+	/**
+	 * Workaround to allow empty value (i.e. zero arity) for '--save-config' option
+	 * Insert empty string arg if another option start right after this one, or it is a last one.
+	 */
+	private String[] fixArgsForEmptySaveConfig(String[] args) {
+		int len = args.length;
+		for (int i = 0; i < len; i++) {
+			String arg = args[i];
+			if (arg.equals("--save-config")) {
+				int next = i + 1;
+				if (next == len) {
+					return insertEmptyArg(args, next, true);
+				}
+				if (next < len) {
+					String nextArg = args[next];
+					if (nextArg.startsWith("-")) {
+						return insertEmptyArg(args, next, false);
+					}
+				}
+				break;
+			}
+		}
+		return args;
+	}
+
+	private static String[] insertEmptyArg(String[] args, int i, boolean add) {
+		List<String> strings = new ArrayList<>(Arrays.asList(args));
+		if (add) {
+			strings.add("");
+		} else {
+			strings.add(i, "");
+		}
+		return strings.toArray(new String[0]);
 	}
 
 	public void printUsage() {
@@ -182,7 +216,9 @@ public class JCommanderWrapper {
 			}
 			if (addDefaults) {
 				String defaultValue = getDefaultValue(args, f);
-				if (defaultValue != null && !description.contains("(default)")) {
+				if (defaultValue != null
+						&& !defaultValue.isEmpty()
+						&& !description.contains("(default)")) {
 					opt.append(", default: ").append(defaultValue);
 				}
 			}
@@ -238,19 +274,16 @@ public class JCommanderWrapper {
 
 	private String appendPluginOptions(int maxNamesLen) {
 		StringBuilder sb = new StringBuilder();
-		int k = 1;
 		// load and init all options plugins to print all options
 		try (JadxDecompiler decompiler = new JadxDecompiler(argsObj.toJadxArgs())) {
 			JadxPluginManager pluginManager = decompiler.getPluginManager();
-			pluginManager.load(new JadxExternalPluginsLoader());
+			pluginManager.load(decompiler.getArgs().getPluginLoader());
 			pluginManager.initAll();
 			try {
 				for (PluginContext context : pluginManager.getAllPluginContexts()) {
 					JadxPluginOptions options = context.getOptions();
 					if (options != null) {
-						if (appendPlugin(context.getPluginInfo(), context.getOptions(), sb, maxNamesLen)) {
-							k++;
-						}
+						appendPlugin(context.getPluginInfo(), context.getOptions(), sb, maxNamesLen);
 					}
 				}
 			} finally {

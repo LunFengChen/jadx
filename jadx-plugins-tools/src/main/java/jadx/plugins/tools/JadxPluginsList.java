@@ -11,13 +11,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import jadx.core.utils.files.FileUtils;
 import jadx.plugins.tools.data.JadxPluginListCache;
-import jadx.plugins.tools.data.JadxPluginMetadata;
+import jadx.plugins.tools.data.JadxPluginListEntry;
 import jadx.plugins.tools.resolvers.github.GithubTools;
 import jadx.plugins.tools.resolvers.github.LocationInfo;
 import jadx.plugins.tools.resolvers.github.data.Asset;
@@ -29,9 +31,10 @@ import static jadx.core.utils.GsonUtils.buildGson;
 import static jadx.plugins.tools.utils.PluginFiles.PLUGINS_LIST_CACHE;
 
 public class JadxPluginsList {
+	private static final Logger LOG = LoggerFactory.getLogger(JadxPluginsList.class);
 	private static final JadxPluginsList INSTANCE = new JadxPluginsList();
 
-	private static final Type LIST_TYPE = new TypeToken<List<JadxPluginMetadata>>() {
+	private static final Type LIST_TYPE = new TypeToken<List<JadxPluginListEntry>>() {
 	}.getType();
 
 	private static final Type CACHE_TYPE = new TypeToken<JadxPluginListCache>() {
@@ -56,7 +59,7 @@ public class JadxPluginsList {
 	 * <br>
 	 * Method call is blocking.
 	 */
-	public synchronized void get(Consumer<List<JadxPluginMetadata>> consumer) {
+	public synchronized void get(Consumer<List<JadxPluginListEntry>> consumer) {
 		if (loadedList != null) {
 			consumer.accept(loadedList.getList());
 			return;
@@ -64,17 +67,19 @@ public class JadxPluginsList {
 		JadxPluginListCache listCache = loadCache();
 		if (listCache != null) {
 			consumer.accept(listCache.getList());
+			loadedList = listCache;
 		}
 		Release release = fetchLatestRelease();
 		if (listCache == null || !listCache.getVersion().equals(release.getName())) {
 			JadxPluginListCache updatedList = fetchBundle(release);
 			saveCache(updatedList);
 			consumer.accept(updatedList.getList());
+			loadedList = updatedList;
 		}
 	}
 
-	public List<JadxPluginMetadata> get() {
-		AtomicReference<List<JadxPluginMetadata>> holder = new AtomicReference<>();
+	public List<JadxPluginListEntry> get() {
+		AtomicReference<List<JadxPluginListEntry>> holder = new AtomicReference<>();
 		get(holder::set);
 		return holder.get();
 	}
@@ -98,12 +103,12 @@ public class JadxPluginsList {
 		} catch (Exception e) {
 			throw new RuntimeException("Error saving file: " + PLUGINS_LIST_CACHE, e);
 		}
-		loadedList = listCache;
 	}
 
 	private Release fetchLatestRelease() {
-		LocationInfo latest = new LocationInfo("jadx-decompiler", "jadx-plugins-list", "list", null);
-		Release release = GithubTools.fetchRelease(latest);
+		LOG.debug("Fetching latest plugins-list release info");
+		LocationInfo pluginsList = new LocationInfo("jadx-decompiler", "jadx-plugins-list", "list");
+		Release release = GithubTools.fetchRelease(pluginsList);
 		List<Asset> assets = release.getAssets();
 		if (assets.isEmpty()) {
 			throw new RuntimeException("Release don't have assets");
@@ -112,6 +117,7 @@ public class JadxPluginsList {
 	}
 
 	private JadxPluginListCache fetchBundle(Release release) {
+		LOG.debug("Fetching plugins-list bundle: {}", release.getName());
 		try {
 			Asset listAsset = release.getAssets().get(0);
 			Path tmpListFile = Files.createTempFile("plugins-list", ".zip");
@@ -129,9 +135,9 @@ public class JadxPluginsList {
 		}
 	}
 
-	private static List<JadxPluginMetadata> loadListBundle(Path tmpListFile) {
+	private static List<JadxPluginListEntry> loadListBundle(Path tmpListFile) {
 		Gson gson = buildGson();
-		List<JadxPluginMetadata> entries = new ArrayList<>();
+		List<JadxPluginListEntry> entries = new ArrayList<>();
 		new ZipReader().visitEntries(tmpListFile.toFile(), entry -> {
 			if (entry.getName().endsWith(".json")) {
 				try (Reader reader = new InputStreamReader(entry.getInputStream())) {

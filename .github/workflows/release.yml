@@ -14,7 +14,7 @@ jobs:
   build-release-win-bundle:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set up JDK
         uses: oracle-actions/setup-java@v1
@@ -35,7 +35,7 @@ jobs:
         run: ./gradlew dist -PbundleJRE=true
 
       - name: Save JRE bundle artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ format('jadx-gui-{0}-with-jre-win', env.JADX_VERSION) }}
           path: ${{ format('build/distWinWithJre/jadx-gui-{0}-with-jre-win.zip', env.JADX_VERSION) }}
@@ -46,7 +46,7 @@ jobs:
     needs: build-release-win-bundle
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -70,7 +70,7 @@ jobs:
           JADX_BUILD_JAVA_VERSION: 11
 
       - name: Download Windows JRE bundle
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: ${{ format('jadx-gui-{0}-with-jre-win', env.JADX_VERSION) }}
           path: ${{ format('build/jadx-gui-{0}-with-jre-win', env.JADX_VERSION) }}

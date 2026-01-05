@@ -162,6 +162,7 @@ public abstract class AbstractCodeArea extends RSyntaxTextArea {
 			public void actionPerformed(ActionEvent e) {
 				boolean wrap = !getLineWrap();
 				settings.setCodeAreaLineWrap(wrap);
+				settings.sync();
 				contentPanel.getTabbedPane().getTabs().forEach(v -> {
 					if (v instanceof AbstractCodeContentPanel) {
 						AbstractCodeArea codeArea = ((AbstractCodeContentPanel) v).getCodeArea();
@@ -172,7 +173,6 @@ public abstract class AbstractCodeArea extends RSyntaxTextArea {
 						}
 					}
 				});
-				settings.sync();
 			}
 		});
 		popupMenu.add(wrapItem);
@@ -396,10 +396,10 @@ public abstract class AbstractCodeArea extends RSyntaxTextArea {
 	public static void loadCommonSettings(MainWindow mainWindow, RSyntaxTextArea area) {
 		JadxSettings settings = mainWindow.getSettings();
 		mainWindow.getEditorThemeManager().apply(area);
-		area.setFont(settings.getFont());
+		area.setFont(settings.getCodeFont());
 		Gutter gutter = RSyntaxUtilities.getGutter(area);
 		if (gutter != null) {
-			gutter.setLineNumberFont(settings.getFont());
+			gutter.setLineNumberFont(settings.getCodeFont());
 		}
 	}
 

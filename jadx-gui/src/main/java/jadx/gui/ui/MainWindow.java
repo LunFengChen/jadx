@@ -54,9 +54,11 @@ import javax.swing.JToolBar;
 import javax.swing.JTree;
 import javax.swing.SwingUtilities;
 import javax.swing.ToolTipManager;
+import javax.swing.UIManager;
 import javax.swing.WindowConstants;
 import javax.swing.event.TreeExpansionEvent;
 import javax.swing.event.TreeWillExpandListener;
+import javax.swing.plaf.FontUIResource;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
@@ -70,8 +72,10 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.extras.FlatInspector;
 import com.formdev.flatlaf.extras.FlatUIDefaultsInspector;
+import com.formdev.flatlaf.util.UIScale;
 
 import ch.qos.logback.classic.Level;
 
@@ -114,8 +118,11 @@ import jadx.gui.plugins.context.CommonGuiPluginsContext;
 import jadx.gui.plugins.context.TreePopupMenuEntry;
 import jadx.gui.plugins.mappings.RenameMappingsGui;
 import jadx.gui.plugins.quark.QuarkDialog;
+import jadx.gui.report.ExceptionDialog;
+import jadx.gui.report.JadxExceptionHandler;
 import jadx.gui.settings.JadxProject;
 import jadx.gui.settings.JadxSettings;
+import jadx.gui.settings.data.SaveOptionEnum;
 import jadx.gui.settings.ui.JadxSettingsWindow;
 import jadx.gui.tree.TreeExpansionService;
 import jadx.gui.treemodel.ApkSignatureNode;
@@ -133,7 +140,6 @@ import jadx.gui.ui.codearea.theme.EditorThemeManager;
 import jadx.gui.ui.dialog.ADBDialog;
 import jadx.gui.ui.dialog.AboutDialog;
 import jadx.gui.ui.dialog.CharsetDialog;
-import jadx.gui.ui.dialog.ExceptionDialog;
 import jadx.gui.ui.dialog.GotoAddressDialog;
 import jadx.gui.ui.dialog.LogViewerDialog;
 import jadx.gui.ui.dialog.SearchDialog;
@@ -261,9 +267,8 @@ public class MainWindow extends JFrame {
 		this.editorThemeManager = new EditorThemeManager(settings);
 
 		JadxEventQueue.register();
+		JadxExceptionHandler.register(this);
 		resetCache();
-		FontUtils.registerBundledFonts();
-		editorThemeManager.setTheme(settings.getEditorTheme());
 		initUI();
 		this.editorSyncManager = new EditorSyncManager(this, tabbedPane);
 		this.backgroundExecutor = new BackgroundExecutor(settings, progressPane);
@@ -284,14 +289,6 @@ public class MainWindow extends JFrame {
 		treeSplitPane.setDividerLocation(settings.getTreeWidth());
 		heapUsageBar.setVisible(settings.isShowHeapUsageBar());
 		setVisible(true);
-		setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-		addWindowListener(new WindowAdapter() {
-			@Override
-			public void windowClosing(WindowEvent e) {
-				closeWindow();
-			}
-		});
-
 		processCommandLineArgs();
 	}
 
@@ -500,15 +497,17 @@ public class MainWindow extends JFrame {
 
 	private void open(List<Path> paths, Runnable onFinish) {
 		saveAll();
-		closeAll();
-		if (paths.size() == 1 && openSingleFile(paths.get(0), onFinish)) {
-			return;
-		}
-		// start new project
-		project = new JadxProject(this);
-		project.setFilePaths(paths);
-		showUndisplayedCharsDialog = false;
-		loadFiles(onFinish);
+		UiUtils.bgRun(() -> {
+			closeAll();
+			if (paths.size() == 1 && openSingleFile(paths.get(0), onFinish)) {
+				return;
+			}
+			// start new project
+			project = new JadxProject(this);
+			project.setFilePaths(paths);
+			showUndisplayedCharsDialog = false;
+			loadFiles(onFinish);
+		});
 	}
 
 	private boolean openSingleFile(Path singleFile, Runnable onFinish) {
@@ -699,10 +698,10 @@ public class MainWindow extends JFrame {
 			return true;
 		}
 		// Check if we saved settings that indicate what to do
-		if (settings.getSaveOption() == JadxSettings.SAVEOPTION.NEVER) {
+		if (settings.getSaveOption() == SaveOptionEnum.NEVER) {
 			return true;
 		}
-		if (settings.getSaveOption() == JadxSettings.SAVEOPTION.ALWAYS) {
+		if (settings.getSaveOption() == SaveOptionEnum.ALWAYS) {
 			saveProject();
 			return true;
 		}
@@ -722,7 +721,7 @@ public class MainWindow extends JFrame {
 		switch (res) {
 			case JOptionPane.YES_OPTION:
 				if (remember.isSelected()) {
-					settings.setSaveOption(JadxSettings.SAVEOPTION.ALWAYS);
+					settings.setSaveOption(SaveOptionEnum.ALWAYS);
 					settings.sync();
 				}
 				saveProject();
@@ -730,7 +729,7 @@ public class MainWindow extends JFrame {
 
 			case JOptionPane.NO_OPTION:
 				if (remember.isSelected()) {
-					settings.setSaveOption(JadxSettings.SAVEOPTION.NEVER);
+					settings.setSaveOption(SaveOptionEnum.NEVER);
 					settings.sync();
 				}
 				return true;
@@ -1162,12 +1161,12 @@ public class MainWindow extends JFrame {
 
 		JCheckBoxMenuItem dockLog = new JCheckBoxMenuItem(NLS.str("menu.dock_log"));
 		dockLog.setState(settings.isDockLogViewer());
-		dockLog.addActionListener(event -> settings.setDockLogViewer(!settings.isDockLogViewer()));
+		dockLog.addActionListener(event -> settings.saveDockLogViewer(!settings.isDockLogViewer()));
 
 		ActionHandler quickTabsAction = new ActionHandler(ev -> {
 			boolean visible = quickTabsTree == null;
 			setQuickTabsVisibility(visible);
-			settings.setDockQuickTabs(visible);
+			settings.saveDockQuickTabs(visible);
 		});
 		quickTabsAction.setNameAndDesc(NLS.str("menu.dock_quick_tabs"));
 		quickTabsAction.setIcon(Icons.QUICK_TABS);
@@ -1516,6 +1515,14 @@ public class MainWindow extends JFrame {
 			FlatInspector.install("ctrl shift alt X");
 			FlatUIDefaultsInspector.install("ctrl shift alt Y");
 		}
+
+		setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+		addWindowListener(new WindowAdapter() {
+			@Override
+			public void windowClosing(WindowEvent e) {
+				closeWindow();
+			}
+		});
 	}
 
 	public void setLocationAndPosition() {
@@ -1562,14 +1569,23 @@ public class MainWindow extends JFrame {
 	}
 
 	private void updateUiSettings() {
-		LafManager.updateLaf(settings);
+		boolean needUpdateUI = false;
+		Font defaultUiFont = UIManager.getFont("defaultFont");
+		Font uiFont = settings.getUiFont();
+		if (!uiFont.equals(defaultUiFont)) {
+			UIManager.put("defaultFont", new FontUIResource(uiFont));
+			setFont(uiFont);
+			needUpdateUI = true;
+		}
+		if (LafManager.updateLaf(settings)) {
+			needUpdateUI = true;
+		}
 		editorThemeManager.setTheme(settings.getEditorTheme());
 
-		Font font = settings.getFont();
-		Font largerFont = font.deriveFont(font.getSize() + 2.f);
-
-		setFont(largerFont);
-		tree.setFont(largerFont);
+		if (UIScale.setZoomFactor(settings.getUiZoom())) {
+			needUpdateUI = true;
+		}
+		tree.setFont(settings.getCodeFont());
 		tree.setRowHeight(-1);
 
 		tabbedPane.loadSettings();
@@ -1579,10 +1595,13 @@ public class MainWindow extends JFrame {
 		if (quickTabsTree != null) {
 			quickTabsTree.loadSettings();
 		}
-
 		shortcutsController.loadSettings();
+		if (needUpdateUI) {
+			FlatLaf.updateUI();
+		}
 	}
 
+	@SuppressWarnings("finally")
 	private void closeWindow() {
 		saveAll();
 		if (!ensureProjectIsSaved()) {
@@ -1596,6 +1615,9 @@ public class MainWindow extends JFrame {
 				if (debuggerPanel != null) {
 					saveSplittersInfo();
 				}
+				// block UI thread to avoid settings data changes during sync
+				UiUtils.uiRunAndWait(settings::sync);
+
 				closeAll();
 				UiUtils.uiRunAndWait(() -> {
 					heapUsageBar.reset();
@@ -1755,7 +1777,7 @@ public class MainWindow extends JFrame {
 		}
 		Runnable undock = () -> {
 			hideDockedLog();
-			settings.setDockLogViewer(false);
+			settings.saveDockLogViewer(false);
 			LogViewerDialog.open(this, logOptions);
 		};
 		logPanel = new LogPanel(this, logOptions, undock, this::hideDockedLog);
@@ -1829,7 +1851,7 @@ public class MainWindow extends JFrame {
 		StringBuilder nonDisplayString = new StringBuilder();
 
 		List<ClassNode> classes = wrapper.getRootNode().getClasses(true);
-		Font font = getSettings().getFont();
+		Font font = getSettings().getCodeFont();
 		boolean hasNonDisplayable = false;
 
 		for (ClassNode cls : classes) {

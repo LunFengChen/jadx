@@ -130,7 +130,7 @@ public class UsageDialogPlus extends CommonSearchDialog {
 		usageTree.putClientProperty("JTree.lineStyle", "Horizontal");
 		usageTree.setRowHeight(22);
 		usageTree.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-		usageTree.setFont(mainWindow.getSettings().getFont());
+		usageTree.setFont(mainWindow.getSettings().getCodeFont());
 
 		// Use a custom renderer instead of a custom UI
 		usageTree.setCellRenderer(new PathHighlightTreeCellRenderer());
@@ -597,11 +597,8 @@ public class UsageDialogPlus extends CommonSearchDialog {
 		getRootPane().setDefaultButton(openBtn);
 
 		JCheckBox cbKeepOpen = new JCheckBox(NLS.str("search_dialog.keep_open"));
-		cbKeepOpen.setSelected(mainWindow.getSettings().getKeepCommonDialogOpen());
-		cbKeepOpen.addActionListener(e -> {
-			mainWindow.getSettings().setKeepCommonDialogOpen(cbKeepOpen.isSelected());
-			mainWindow.getSettings().sync();
-		});
+		cbKeepOpen.setSelected(mainWindow.getSettings().isKeepCommonDialogOpen());
+		cbKeepOpen.addActionListener(e -> mainWindow.getSettings().saveKeepCommonDialogOpen(cbKeepOpen.isSelected()));
 		cbKeepOpen.setAlignmentY(Component.CENTER_ALIGNMENT);
 
 		JPanel buttonPane = new JPanel();
