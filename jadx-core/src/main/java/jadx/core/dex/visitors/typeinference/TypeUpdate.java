@@ -30,7 +30,6 @@ import jadx.core.dex.nodes.InsnNode;
 import jadx.core.dex.nodes.MethodNode;
 import jadx.core.dex.nodes.RootNode;
 import jadx.core.dex.nodes.utils.TypeUtils;
-import jadx.core.utils.exceptions.JadxOverflowException;
 import jadx.core.utils.exceptions.JadxRuntimeException;
 
 import static jadx.core.dex.visitors.typeinference.TypeUpdateResult.CHANGED;
@@ -223,16 +222,11 @@ public final class TypeUpdate {
 			return CHANGED;
 		}
 		updateInfo.requestUpdate(arg, candidateType);
-		try {
-			TypeUpdateResult result = runListeners(updateInfo, arg, candidateType);
-			if (result == REJECT) {
-				updateInfo.rollbackUpdate(arg);
-			}
-			return result;
-		} catch (StackOverflowError | BootstrapMethodError error) {
-			throw new JadxOverflowException("Type update terminated with stack overflow, arg: " + arg
-					+ ", method size: " + updateInfo.getMth().getInsnsCount());
+		TypeUpdateResult result = runListeners(updateInfo, arg, candidateType);
+		if (result == REJECT) {
+			updateInfo.rollbackUpdate(arg);
 		}
+		return result;
 	}
 
 	private TypeUpdateResult runListeners(TypeUpdateInfo updateInfo, InsnArg arg, ArgType candidateType) {
@@ -453,14 +447,9 @@ public final class TypeUpdate {
 		boolean assignChanged = isAssign(insn, arg);
 		InsnArg changeArg = assignChanged ? insn.getArg(0) : insn.getResult();
 
-		boolean correctType;
-		if (changeArg.getType().isTypeKnown()) {
-			// allow result to be wider
-			TypeCompareEnum cmp = comparator.compareTypes(candidateType, changeArg.getType());
-			correctType = cmp.isEqual() || (assignChanged ? cmp.isWider() : cmp.isNarrow());
-		} else {
-			correctType = true;
-		}
+		// allow result to be wider
+		TypeCompareEnum cmp = comparator.compareTypes(candidateType, changeArg.getType());
+		boolean correctType = cmp.isEqual() || (assignChanged ? cmp.isWider() : cmp.isNarrow());
 
 		TypeUpdateResult result = updateTypeChecked(updateInfo, changeArg, candidateType);
 		if (result == SAME && !correctType) {

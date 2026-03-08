@@ -16,21 +16,12 @@ dependencies {
 	// import mappings
 	implementation(project(":jadx-plugins:jadx-rename-mappings"))
 
-	// jadx-script autocomplete support
-	implementation(project(":jadx-plugins:jadx-script:jadx-script-ide"))
-	implementation(project(":jadx-plugins:jadx-script:jadx-script-runtime"))
-	implementation(kotlin("scripting-common"))
-	implementation("com.fifesoft:autocomplete:3.3.2")
-
-	// use KtLint for format and check jadx scripts
-	implementation("com.pinterest.ktlint:ktlint-rule-engine:1.8.0")
-	implementation("com.pinterest.ktlint:ktlint-ruleset-standard:1.8.0")
-
 	implementation("org.jcommander:jcommander:2.0")
 	implementation("ch.qos.logback:logback-classic:1.5.21")
 	implementation("io.github.oshai:kotlin-logging-jvm:7.0.13")
 
-	implementation("com.fifesoft:rsyntaxtextarea:3.6.0")
+	implementation("com.fifesoft:rsyntaxtextarea:3.6.1")
+	implementation("com.fifesoft:autocomplete:3.3.2")
 	implementation("org.drjekyll:fontchooser:3.1.0")
 	implementation("hu.kazocsaba:image-viewer:1.2.3")
 	implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0") // WebP support for image viewer
@@ -58,6 +49,11 @@ dependencies {
 	implementation("org.exbin.bined:bined-swing-section:$bined")
 	implementation("org.exbin.auxiliary:binary_data:$bined")
 	implementation("org.exbin.auxiliary:binary_data-array:$bined")
+
+	// Library for rendering GraphViz DOT files
+	implementation("guru.nidi:graphviz-java:0.18.1")
+	implementation("com.eclipsesource.j2v8:j2v8_linux_x86_64:4.6.0")
+	implementation("com.eclipsesource.j2v8:j2v8_win32_x86_64:4.6.0")
 
 	testImplementation(project.project(":jadx-core").sourceSets.getByName("test").output)
 }
@@ -169,7 +165,7 @@ fun escapeJVMOptions(): List<String> {
 }
 
 runtime {
-	addOptions("--strip-debug", "--compress", "zip-9", "--no-header-files", "--no-man-pages")
+	addOptions("--strip-debug", "--no-header-files", "--no-man-pages")
 	addModules(
 		"java.desktop",
 		"java.naming",
